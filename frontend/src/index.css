@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+html {
+  font-family: Inter, "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+body {
+  @apply bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 text-sm antialiased;
+}
+
+/* md 渲染区的排版密度 */
+.md h1 { @apply text-base font-semibold mt-3 mb-1; }
+.md h2 { @apply text-sm font-semibold mt-3 mb-1; }
+.md h3 { @apply text-sm font-semibold mt-2 mb-1; }
+.md p  { @apply my-1.5 leading-relaxed; }
+.md ul { @apply list-disc pl-5 my-1.5; }
+.md ol { @apply list-decimal pl-5 my-1.5; }
+.md li { @apply my-0.5; }
+.md code { @apply bg-zinc-200/70 dark:bg-zinc-800 rounded px-1 py-0.5 text-[12px]; }
+.md pre { @apply bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md p-2.5 my-2 overflow-x-auto; }
+.md pre code { @apply bg-transparent p-0; }
+.md blockquote { @apply border-l-2 border-zinc-300 dark:border-zinc-700 pl-3 my-2 text-zinc-500 dark:text-zinc-400; }
+.md table { @apply my-2 text-[12px] border-collapse; }
+.md th, .md td { @apply border border-zinc-200 dark:border-zinc-800 px-2 py-1 text-left; }
+.md th { @apply bg-zinc-100 dark:bg-zinc-900; }
+.md a { @apply text-blue-600 dark:text-blue-400 underline underline-offset-2; }
+.md hr { @apply my-3 border-zinc-200 dark:border-zinc-800; }
+
+/* 抽屉/对话框入场 */
+@keyframes drawer-in { from { transform: translateX(24px); opacity: .6 } to { transform: none; opacity: 1 } }
+@keyframes dialog-in { from { transform: translateY(-8px); opacity: .6 } to { transform: none; opacity: 1 } }
+.drawer-in { animation: drawer-in .2s ease-out; }
+.dialog-in { animation: dialog-in .16s ease-out; }
+
+/* 细滚动条 */
+* { scrollbar-width: thin; }

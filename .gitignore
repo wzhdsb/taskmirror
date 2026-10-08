@@ -1,0 +1,7 @@
+data/
+**/__pycache__/
+**/node_modules/
+frontend/dist/
+*.egg-info/
+.venv/
+e2e/*.png
