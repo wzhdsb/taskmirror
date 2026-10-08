@@ -34,5 +34,15 @@ body {
 .drawer-in { animation: drawer-in .2s ease-out; }
 .dialog-in { animation: dialog-in .16s ease-out; }
 
+/* 远端变更可见: 新卡绿描边+滑入, 更新卡蓝描边渐隐 */
+@keyframes tm-flash { from { box-shadow: 0 0 0 2px var(--tm-fc, transparent) } to { box-shadow: 0 0 0 2px transparent } }
+@keyframes tm-pop { from { opacity: 0; transform: translateY(6px) scale(.98) } to { opacity: 1; transform: none } }
+.tm-flash-new { --tm-fc: rgb(16 185 129 / .85); animation: tm-flash 2.3s ease-out, tm-pop .3s ease-out; }
+.tm-flash-upd { --tm-fc: rgb(59 130 246 / .85); animation: tm-flash 2.3s ease-out; }
+
+/* 活动通知右上角滑入 */
+@keyframes tm-toast-in { from { opacity: 0; transform: translateX(14px) } to { opacity: 1; transform: none } }
+.tm-toast { animation: tm-toast-in .25s ease-out; }
+
 /* 细滚动条 */
 * { scrollbar-width: thin; }

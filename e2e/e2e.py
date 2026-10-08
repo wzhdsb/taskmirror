@@ -90,7 +90,8 @@ try:
         pg.click("text=恢复")
         pg.click("text=删除")
         time.sleep(0.5)
-        assert "e2e 冒烟卡" not in pg.content()
+        # 看板列里该卡消失即可: 删除事件会弹 toast(右上角), 标题仍在 DOM 里
+        assert pg.locator(".p-2.pl-2\.5", has_text="e2e 冒烟卡").count() == 0
 
         # 暗色切换 + 重建两张卡后截图
         pg.click("text=+ 新建任务")

@@ -4,7 +4,7 @@ import Board from "./components/Board"
 import CardDrawer from "./components/CardDrawer"
 import Monitor from "./components/Monitor"
 import NewTaskDialog from "./components/NewTaskDialog"
-import { STATUS_ORD, type BoardData, type Task } from "./types"
+import { evText, safeParse, STATUS_ORD, type BoardData, type Task } from "./types"
 
 interface Filter {
   q: string
@@ -23,6 +23,12 @@ export default function App() {
   const [owner, setOwner] = useState(() => localStorage.getItem("tm_owner") || "me")
   const [rev, setRev] = useState(0)
   const toastTimer = useRef<number>(0)
+  const [flash, setFlash] = useState<Record<string, "new" | "upd">>({})
+  const [acts, setActs] = useState<{ key: number; text: string }[]>([])
+  const seen = useRef<Map<string, string>>(new Map()) // id -> updated 首见值, diff 出远端变更
+  const lastEv = useRef(-1) // 已见最大事件 id, 首次加载静默
+  const actKey = useRef(0)
+  const flashTimer = useRef(0)
 
   const toast = useCallback((m: string) => {
     setToastMsg(m)
@@ -30,12 +36,44 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToastMsg(""), 2600)
   }, [])
 
+  const pushAct = useCallback((text: string) => {
+    const key = ++actKey.current
+    setActs(a => [...a.slice(-3), { key, text }])
+    window.setTimeout(() => setActs(a => a.filter(x => x.key !== key)), 4200)
+  }, [])
+
   const refresh = useCallback(() => {
-    api.board().then(b => {
+    Promise.all([api.board(), api.recent(30)]).then(([b, r]) => {
       setBoard(b)
-      setRev(r => r + 1)
+      setRev(x => x + 1)
+      // 远端变更可见: 新卡绿描边+滑入, 更新卡蓝描边渐隐
+      const prev = seen.current
+      const f: Record<string, "new" | "upd"> = {}
+      if (prev.size)
+        for (const t of b.tasks) {
+          const was = prev.get(t.id)
+          if (was === undefined) f[t.id] = "new"
+          else if (was !== t.updated) f[t.id] = "upd"
+        }
+      prev.clear()
+      for (const t of b.tasks) prev.set(t.id, t.updated)
+      if (Object.keys(f).length) {
+        setFlash(f)
+        window.clearTimeout(flashTimer.current)
+        flashTimer.current = window.setTimeout(() => setFlash({}), 2400)
+      }
+      // 活动通知: 新事件右上角浮现("xx 认领了「yy」")
+      const fresh = (lastEv.current >= 0 ? r.events.filter(e => e.id > lastEv.current) : [])
+        .sort((a, b2) => a.id - b2.id)
+      for (const e of fresh.slice(-3)) {
+        const d = safeParse(e.detail)
+        const title = e.title || (d.title as string | undefined) || ""
+        pushAct(`${e.actor} ${evText({ ...e, detail: d } as never)}${title ? ` 「${title}」` : ""}`)
+      }
+      if (fresh.length > 3) pushAct(`…另有 ${fresh.length - 3} 条新动态`)
+      lastEv.current = Math.max(lastEv.current, ...r.events.map(e => e.id), 0)
     }).catch(e => toast(e.message))
-  }, [toast])
+  }, [toast, pushAct])
 
   useEffect(() => {
     refresh()
@@ -104,6 +142,12 @@ export default function App() {
     })
   }, [toast, refresh])
 
+  const onDispatch = useCallback((id: string) => {
+    api.dispatch(id)
+      .then(r => toast(`已派发 AI（进程 ${r.pid}），认领后卡片会自动更新`))
+      .catch(e => toast(e.message))
+  }, [toast])
+
   const sel = "h-7 px-2 rounded-md bg-zinc-100 dark:bg-zinc-800 border border-transparent focus:border-blue-500 outline-none text-xs max-w-28"
 
   return (
@@ -162,7 +206,8 @@ export default function App() {
       </header>
 
       {tab === "board" ? (
-        <Board tasks={tasks} done={done} onOpen={setOpenId} onMove={onMove} onNew={() => setShowNew(true)} />
+        <Board tasks={tasks} done={done} onOpen={setOpenId} onMove={onMove} onNew={() => setShowNew(true)}
+          flash={flash} onDispatch={onDispatch} />
       ) : (
         <Monitor rev={rev} onOpen={setOpenId} />
       )}
@@ -174,6 +219,15 @@ export default function App() {
       {toastMsg && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] px-3.5 h-8 flex items-center rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs shadow-lg">
           {toastMsg}
+        </div>
+      )}
+      {acts.length > 0 && (
+        <div className="fixed top-14 right-4 z-[60] flex flex-col items-end gap-1.5 pointer-events-none">
+          {acts.map(a => (
+            <div key={a.key} className="tm-toast max-w-96 truncate px-3 h-8 flex items-center rounded-md bg-zinc-900/90 dark:bg-zinc-100/95 text-white dark:text-zinc-900 text-xs shadow-lg">
+              {a.text}
+            </div>
+          ))}
         </div>
       )}
     </div>

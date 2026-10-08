@@ -3,12 +3,17 @@ Web(api.py) 与 MCP(mcp_server.py) 两个进程共用本模块, 各自直写同�
 写路径: 进程内锁串行 + 短事务; 跨进程靠 busy_timeout(5s), 单机两进程远达不到瓶颈。
 ponytail: 若未来出现写冲突 SQLITE_BUSY, 在此加一次重试即可, 不需要队列。"""
 import json
+import os
 import re
+import shutil
 import sqlite3
+import subprocess
 import threading
 import time
+from datetime import datetime
+from pathlib import Path
 
-from . import db, mirror
+from . import config, db, mirror
 
 STATUSES = ("待执行", "执行中", "待验收", "完成")
 PRIORITIES = ("low", "normal", "high", "urgent")
@@ -159,6 +164,12 @@ def insights() -> dict:
     suggestions = []
     if review_overdue:
         suggestions.append(f"{len(review_overdue)} 张卡待验收滞留超 {REVIEW_HOURS}h, 请验收或打回")
+    # AI 失联: executor 持有但进程不在(崩溃/被杀/服务重启丢账), >5min 无动静
+    ai_lost = [t for t in rows if t["status"] == "执行中" and t["owner"] == "executor"
+               and t["id"] not in DISPATCHES and _age_hours(t["updated"]) > 5 / 60]
+    if ai_lost:
+        suggestions.append(f"{len(ai_lost)} 张卡 AI 已失联(进程不在): "
+                           + ", ".join(t["id"] for t in ai_lost) + " — 打回待执行或重派")
     if stalled:
         who = ", ".join(sorted({t["owner"] or "无主" for t in stalled}))
         suggestions.append(f"{len(stalled)} 张执行中卡停滞超 {STALL_HOURS}h ({who}), 催 add_log 心跳或换人")
@@ -232,11 +243,13 @@ def create(title, body="", labels=None, priority="normal", due=None, color=None,
     return detail(cid)
 
 
-def patch(cid, actor="webui", **f) -> dict:
+def patch(cid, actor=None, **f) -> dict:
+    """actor 缺省回落卡 owner: MCP 调用方即卡主; REST(api.py)显式传 webui。"""
     with _lock:
         c = db.conn()
         with c:
-            _get(c, cid)
+            row = _get(c, cid)
+            actor = actor or row["owner"] or "webui"
             sets, evs = {}, []
             if f.get("title") is not None:
                 t = re.sub(r"[\n\r]", " ", f["title"]).strip()
@@ -275,13 +288,14 @@ def patch(cid, actor="webui", **f) -> dict:
     return detail(cid)
 
 
-def move(cid, status, before_id=None, actor="webui") -> dict:
+def move(cid, status, before_id=None, actor=None) -> dict:
     if status not in STATUSES:
         raise ApiError(400, "非法 status")
     with _lock:
         c = db.conn()
         with c:
             row = _get(c, cid)
+            actor = actor or row["owner"] or "webui"
             old = row["status"]
             col = [r["id"] for r in c.execute(
                 "SELECT id FROM tasks WHERE board_id=1 AND status=? ORDER BY position, created",
@@ -337,14 +351,15 @@ def take(owner, cid=None, actor=None) -> dict:
     return detail(row["id"])
 
 
-def add_log(cid, text, actor="webui") -> dict:
+def add_log(cid, text, actor=None) -> dict:
     text = " ".join((text or "").split())[:300]
     if not text:
         raise ApiError(400, "日志不能为空")
     with _lock:
         c = db.conn()
         with c:
-            _get(c, cid)
+            row = _get(c, cid)
+            actor = actor or row["owner"] or "webui"
             c.execute("UPDATE tasks SET updated=? WHERE id=?", (now(), cid))
             _ev(c, cid, "log", {"text": text}, actor)
             db.bump_rev(c)
@@ -410,3 +425,196 @@ def import_task(cid, title, status, owner, created, updated, body, events, actor
         loaded = _load_for_mirror(c, cid)
     _after_write(cid, loaded)
     return True
+
+
+# ---------- 网页派发: claude -p + task-executor agent 的进程管理 ----------
+# DISPATCHES 为运行时视图(含 Popen/句柄), dispatches 表为持久真源: 服务重启后据此恢复/清孤儿。
+# 全权模式(--dangerously-skip-permissions)已经用户批准(2026-10-09)。
+
+DISPATCHES: dict[str, dict] = {}
+MAX_DISPATCH = 4  # 对齐 /dispatch 并发预算
+
+
+def system_event(cid: str, event: str, detail: dict, actor: str = "system") -> None:
+    """系统级事件(派发/停止/失联)进事件流, 让网页"看得见"。"""
+    with _lock:
+        c = db.conn()
+        with c:
+            _ev(c, cid, event, detail, actor)
+            db.bump_rev(c)
+
+
+def _pid_alive(pid: int) -> bool:
+    if os.name == "nt":
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if h:
+            k32.CloseHandle(h)
+            return True
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _kill_tree(pid: int) -> None:
+    if os.name == "nt":  # cmd 包装进程树, 单 terminate 杀不干净
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)],
+                       capture_output=True, check=False)
+    else:
+        try:
+            os.kill(pid, 9)
+        except OSError:
+            pass
+
+
+class _AdoptedProc:
+    """服务重启后收养的进程: 没有 Popen 句柄, 按 pid 活性模拟 poll。"""
+
+    def __init__(self, pid: int):
+        self.pid = pid
+
+    def poll(self):
+        return None if _pid_alive(self.pid) else 0
+
+    def terminate(self):
+        _kill_tree(self.pid)
+
+
+def _reap() -> None:
+    for cid, d in list(DISPATCHES.items()):
+        rc = d["proc"].poll()
+        if rc is not None:
+            d["log_fh"].close()
+            del DISPATCHES[cid]
+            c = db.conn()
+            with c:
+                c.execute("DELETE FROM dispatches WHERE task_id=?", (cid,))
+                db.bump_rev(c)
+            system_event(cid, "dispatch_exit", {"pid": d["pid"], "rc": rc})
+
+
+def resume_dispatches() -> None:
+    """启动时对账 dispatches 表: 活进程收养, 死进程清账+失联事件。"""
+    c = db.conn()
+    for row in c.execute("SELECT * FROM dispatches").fetchall():
+        cid, pid = row["task_id"], row["pid"]
+        if _pid_alive(pid):
+            fh = open(row["log"], "a", encoding="utf-8")  # noqa: SIM115 随进程存续, reaped/stop 时关闭
+            DISPATCHES[cid] = {"pid": pid, "started": row["started"],
+                               "proc": _AdoptedProc(pid), "log_fh": fh, "log": row["log"]}
+        else:
+            with c:
+                c.execute("DELETE FROM dispatches WHERE task_id=?", (cid,))
+                db.bump_rev(c)
+            system_event(cid, "dispatch_lost", {"pid": pid})
+
+
+def dispatch(cid: str, actor: str = "webui") -> dict:
+    _reap()
+    t = _get(db.conn(), cid)
+    if t["status"] != "待执行":
+        raise ApiError(400, "仅待执行卡可派发")
+    if cid in DISPATCHES:
+        raise ApiError(409, "该卡已有 AI 在执行")
+    if len(DISPATCHES) >= MAX_DISPATCH:
+        raise ApiError(429, f"AI 并发已满({MAX_DISPATCH})，稍后再派")
+    claude = shutil.which("claude")
+    if not claude:
+        raise ApiError(500, "PATH 里未找到 claude 命令")
+    logs = config.home() / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    log = str(logs / f"dispatch-{cid}-{int(time.time())}.jsonl")
+    # stream-json: 每行一个事件(assistant/tool_use/result), activity() 解析成网页过程流
+    lf = open(log, "w", encoding="utf-8")  # noqa: SIM115 随进程存续, reaped/stop 时关闭
+    prompt = (f"从 TaskMirror 用 take_task 认领任务卡 {cid}，按卡内四段式(①任务②已知事实③交付物④注意)"
+              f"执行到待验收，进展用 add_log 追加。")
+    proc = subprocess.Popen(
+        [claude, "-p", "--agent", "task-executor", "--dangerously-skip-permissions",
+         "--output-format", "stream-json", "--verbose", prompt],
+        stdout=lf, stderr=subprocess.STDOUT, cwd=str(config.repo_root()),
+        env={**os.environ, "PYTHONUTF8": "1"},
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    started = time.strftime("%Y-%m-%d %H:%M:%S")
+    DISPATCHES[cid] = {"pid": proc.pid, "started": started, "proc": proc, "log_fh": lf, "log": log}
+    c = db.conn()
+    with c:
+        c.execute("INSERT OR REPLACE INTO dispatches(task_id, pid, log, started) VALUES(?,?,?,?)",
+                  (cid, proc.pid, log, started))
+        db.bump_rev(c)
+    system_event(cid, "dispatched", {"pid": proc.pid, "log": Path(log).name}, actor)
+    return {"ok": True, "pid": proc.pid}
+
+
+def stop_dispatch(cid: str, actor: str = "webui") -> dict:
+    _reap()
+    d = DISPATCHES.get(cid)
+    if not d:
+        raise ApiError(404, "该卡无进行中的 AI 进程")
+    _kill_tree(d["pid"])
+    d["log_fh"].close()
+    del DISPATCHES[cid]
+    c = db.conn()
+    with c:
+        c.execute("DELETE FROM dispatches WHERE task_id=?", (cid,))
+        db.bump_rev(c)
+    system_event(cid, "dispatch_stopped", {"pid": d["pid"]}, actor)
+    # 进程已死, 卡不可能再推进: 打回待执行清 owner, 供重新派发/人工接手
+    patch(cid, owner="", actor="system")
+    move(cid, "待执行", None, actor="system")
+    return {"ok": True}
+
+
+def running() -> list[dict]:
+    _reap()
+    return [{"task_id": k, "pid": v["pid"], "started": v["started"]}
+            for k, v in DISPATCHES.items()]
+
+
+def _parse_activity(lines: list[str]) -> list[dict]:
+    """stream-json 行 → 人读活动项(借鉴 zcode ToolCallBlock: 摘要优先, 不淹没在 JSON 里)。"""
+    out = []
+    for ln in lines:
+        try:
+            ev = json.loads(ln)
+        except (ValueError, TypeError):
+            continue
+        ts = ""
+        raw_ts = ev.get("timestamp")
+        if raw_ts:
+            try:
+                ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00")) \
+                         .astimezone().strftime("%H:%M:%S")
+            except ValueError:
+                pass
+        if ev.get("type") == "assistant":
+            for blk in ev.get("message", {}).get("content", []):
+                if blk.get("type") == "tool_use":
+                    name = blk.get("name", "?").split("__")[-1]
+                    arg = next((str(v) for v in (blk.get("input") or {}).values()
+                                if isinstance(v, str) and v.strip()), "")
+                    out.append({"kind": "tool", "text": f"{name}({arg[:44]})", "ts": ts})
+                elif blk.get("type") == "text" and blk.get("text", "").strip():
+                    out.append({"kind": "text", "text": blk["text"].strip()[:110], "ts": ts})
+        elif ev.get("type") == "result":
+            out.append({"kind": "done", "text": str(ev.get("result", ""))[:130], "ts": ts})
+    return out[-30:]
+
+
+def activity(cid: str) -> dict:
+    """运行中取 DISPATCHES 的 log; 已结束取最近一次日志(过程可回看)。"""
+    d = DISPATCHES.get(cid)
+    if d:
+        log = d["log"]
+    else:
+        p = config.home() / "logs"
+        hits = sorted(p.glob(f"dispatch-{cid}-*.jsonl")) if p.exists() else []
+        log = str(hits[-1]) if hits else None
+    if not log or not os.path.isfile(log):
+        return {"activities": [], "running": bool(d)}
+    with open(log, encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()[-400:]
+    return {"activities": _parse_activity(lines), "running": bool(d)}

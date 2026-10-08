@@ -38,6 +38,12 @@ MIGRATIONS: dict[int, list[str]] = {
         "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
         "INSERT INTO boards(id, name, created) VALUES (1, '主看板', datetime('now','localtime'))",
     ],
+    2: [
+        # 网页派发的 AI 进程注册表: 服务重启后据此恢复/清理孤儿
+        """CREATE TABLE dispatches (
+            task_id TEXT PRIMARY KEY, pid INTEGER NOT NULL,
+            log TEXT NOT NULL, started TEXT NOT NULL)""",
+    ],
 }
 
 _backup_lock = threading.Lock()

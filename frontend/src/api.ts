@@ -23,6 +23,12 @@ export const api = {
   remove: (id: string) => req<{ ok: boolean }>("DELETE", `/api/tasks/${encodeURIComponent(id)}`),
   insights: () => req<Insights>("GET", "/api/insights"),
   recent: (limit = 100) => req<{ events: RecentEvent[] }>("GET", `/api/events/recent?limit=${limit}`),
+  dispatch: (id: string) => req<{ ok: boolean; pid: number }>("POST", `/api/tasks/${encodeURIComponent(id)}/dispatch`),
+  dispatches: () => req<{ running: { task_id: string; pid: number; started: string }[] }>("GET", "/api/dispatches"),
+  stopDispatch: (id: string) => req<{ ok: boolean }>("POST", `/api/dispatches/${encodeURIComponent(id)}/stop`),
+  activity: (id: string) =>
+    req<{ activities: { kind: string; text: string; ts: string }[]; running: boolean }>(
+      "GET", `/api/dispatches/${encodeURIComponent(id)}/activity`),
 }
 
 /** SSE rev 广播 → onChange; 返回清理函数。EventSource 自带断线重连。 */

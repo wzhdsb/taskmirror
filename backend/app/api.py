@@ -50,6 +50,7 @@ async def _rev_stream(request):
 def create_app() -> FastAPI:
     db.migrate()
     mirror.full_sync()
+    service.resume_dispatches()  # 服务重启: 收养活 AI 进程 / 清孤儿
     log = setup_log()
     app = FastAPI(title="TaskMirror", docs_url=None, redoc_url=None)
 
@@ -87,11 +88,11 @@ def create_app() -> FastAPI:
 
     @app.patch("/api/tasks/{cid}")
     async def patch_task(cid: str, req: TaskPatch):
-        return service.patch(cid, **req.model_dump(exclude_unset=True))
+        return service.patch(cid, actor="webui", **req.model_dump(exclude_unset=True))
 
     @app.post("/api/tasks/{cid}/move")
     async def move_task(cid: str, req: MoveReq):
-        return service.move(cid, req.status, req.before_id)
+        return service.move(cid, req.status, req.before_id, actor="webui")
 
     @app.post("/api/tasks/{cid}/log")
     async def log_task(cid: str, req: LogReq):
@@ -112,6 +113,24 @@ def create_app() -> FastAPI:
     @app.get("/api/insights")
     async def insights():
         return service.insights()
+
+    # ---------- 派发: 网页一键起 AI 执行者(claude -p + task-executor agent), 逻辑在 service ----------
+
+    @app.post("/api/tasks/{cid}/dispatch")
+    def dispatch_task(cid: str):
+        return service.dispatch(cid)
+
+    @app.get("/api/dispatches")
+    async def list_dispatches():
+        return {"running": service.running()}
+
+    @app.get("/api/dispatches/{cid}/activity")
+    async def dispatch_activity(cid: str):
+        return service.activity(cid)
+
+    @app.post("/api/dispatches/{cid}/stop")
+    def stop_dispatch(cid: str):
+        return service.stop_dispatch(cid)
 
     # ---------- SSE: rev 广播, 客户端收到变化后重拉 /api/board ----------
 

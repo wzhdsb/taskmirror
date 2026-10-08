@@ -90,6 +90,10 @@ export function evText(e: TaskEvent): string {
     case "log": return String(d.text || "")
     case "restore": return `恢复到待执行`
     case "imported": return `从旧系统导入`
+    case "dispatched": return `⚡ 派发 AI 进程 ${d.pid}`
+    case "dispatch_exit": return `AI 进程退出 (rc=${d.rc})`
+    case "dispatch_stopped": return `⛔ AI 进程被停止, 卡已打回`
+    case "dispatch_lost": return `AI 进程失联(服务重启), 请检查`
     case "deleted": return `删除卡片`
     default: return e.event
   }
@@ -113,3 +117,11 @@ export const STATUS_BAR: Record<Status, string> = {
 
 /** 标签可选色 */
 export const COLORS = ["#3b82f6", "#f59e0b", "#ef4444", "#10b981", "#8b5cf6", "#ec4899"]
+
+export function safeParse(s: string): Record<string, unknown> {
+  try {
+    return JSON.parse(s || "{}")
+  } catch {
+    return {}
+  }
+}

@@ -17,6 +17,8 @@ Two independent processes share the same DB. **If the web server dies, agents ke
 
 ## Features
 
+- **Live visibility** — every agent action in the CLI lands on the board within seconds: new cards slide in highlighted, changed cards flash, activity toasts top-right
+- **Dispatch AI from the web** — one ⚡ button on a pending card spawns an AI executor (`claude -p` + task-executor agent); claims/logs/deliveries stream onto the board; monitor tab shows live AI processes with kill switch (max 4 concurrent)
 - **Kanban web UI** — dark/light, drag & drop (dnd-kit), right drawer with markdown body editing, labels/priority/due/color, live updates over SSE
 - **Monitor tab** — per-owner load, stalled cards, stage-duration averages, live event stream, rule-based advisor suggestions (`GET /api/insights`)
 - **8 MCP tools** — `list_tasks` `get_task` `create_task` `take_task` (atomic claim) `update_task` `set_status` `add_log` `get_insights`
@@ -62,6 +64,19 @@ python dev.py e2e            # Playwright full-flow smoke (needs `python dev.py 
 python dev.py migrate-legacy "path/to/old/tasks" [--refresh]   # import legacy markdown cards
 python dev.py backup         # snapshot DB
 ```
+
+### Dispatch scenario matrix (live-tested, key paths pinned in `backend/tests/test_dispatch.py`)
+
+| # | Scenario | Result |
+|---|---|---|
+| 1 | 3 cards dispatched in parallel — no cross-talk, all deliveries correct | ✅ |
+| 2 | 5th concurrent dispatch → 429 (cap aligned with model budget) | ✅ |
+| 3 | Force-stop mid-run → card rolled back to 待执行/owner cleared, full event audit trail | ✅ |
+| 4 | Service killed & restarted mid-run → live AI process adopted, completes normally | ✅ |
+| 5 | Orphan card (执行中, no process) → surfaced in `/api/insights` as 失联 | ✅ |
+| 6 | Impossible task → AI honestly reports failure, stops at 待验收 | ✅ |
+
+Layered per multi-agent testing practice (unit → handoff → orchestration stress) with chaos injection (kill process / kill orchestrator / fabricate orphans); every failure path found is pinned as a pytest regression.
 
 Data lives in `data/` (gitignored). **Run `git init` inside `data/` for free card-history diffs** — mirrors are the only content, so the git log *is* your change history. Backups land in `data/backups/`.
 

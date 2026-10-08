@@ -21,12 +21,16 @@ export default function Board({
   onOpen,
   onMove,
   onNew,
+  flash,
+  onDispatch,
 }: {
   tasks: Task[]
   done: Task[]
   onOpen: (id: string) => void
   onMove: (id: string, status: string, beforeId: string | null) => void
   onNew: () => void
+  flash: Record<string, "new" | "upd">
+  onDispatch: (id: string) => void
 }) {
   const [activeId, setActiveId] = useState<string | null>(null)
   // 碰撞候选排除被拖卡自身, 否则空列时它离指针"最近"导致拖不动
@@ -68,6 +72,8 @@ export default function Board({
             tasks={s === "完成" ? [...tasks.filter(t => t.status === s), ...done] : tasks.filter(t => t.status === s)}
             onOpen={onOpen}
             onNew={s === "待执行" ? onNew : undefined}
+            flash={flash}
+            onDispatch={onDispatch}
           />
         ))}
       </div>
@@ -81,11 +87,15 @@ function Column({
   tasks,
   onOpen,
   onNew,
+  flash,
+  onDispatch,
 }: {
   status: Status
   tasks: Task[]
   onOpen: (id: string) => void
   onNew?: () => void
+  flash: Record<string, "new" | "upd">
+  onDispatch: (id: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status })
   return (
@@ -105,7 +115,7 @@ function Column({
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2 min-h-24">
         <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map(t => (
-            <Card key={t.id} task={t} onOpen={onOpen} />
+            <Card key={t.id} task={t} onOpen={onOpen} flash={flash[t.id]} onDispatch={onDispatch} />
           ))}
         </SortableContext>
         {!tasks.length && onNew ? (

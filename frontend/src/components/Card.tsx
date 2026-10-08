@@ -14,10 +14,14 @@ export default function Card({
   task: t,
   onOpen,
   overlay,
+  flash,
+  onDispatch,
 }: {
   task: Task
   onOpen?: (id: string) => void
   overlay?: boolean
+  flash?: "new" | "upd"
+  onDispatch?: (id: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: t.id })
   const due = dueCls(t)
@@ -45,13 +49,28 @@ export default function Card({
         )}
         {t.priority === "high" && <span className="text-orange-500">▲</span>}
         {t.color && <span className="size-2 rounded-full" style={{ background: t.color }} />}
+        {!overlay && t.status === "待执行" && onDispatch && (
+          <button
+            title="派发 AI 执行这张卡"
+            onClick={e => {
+              e.stopPropagation()
+              onDispatch(t.id)
+            }}
+            onPointerDown={e => e.stopPropagation()}
+            className="ml-auto h-5 px-1.5 rounded text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 transition-colors"
+          >
+            ⚡派发
+          </button>
+        )}
       </div>
     </div>
   )
 
   const cls = `rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing touch-manipulation select-none transition-shadow border-l-[3px] ${
     t.status === "完成" ? "opacity-70" : ""
-  } ${isDragging ? "opacity-40" : ""} ${overlay ? "shadow-xl rotate-2" : ""}`
+  } ${isDragging ? "opacity-40" : ""} ${overlay ? "shadow-xl rotate-2" : ""} ${
+    flash === "new" ? "tm-flash-new" : flash === "upd" ? "tm-flash-upd" : ""
+  }`
 
   if (overlay) return <div className={cls} style={bar}>{inner}</div>
   return (

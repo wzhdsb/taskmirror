@@ -1,19 +1,35 @@
 import { useEffect, useState } from "react"
 import { api } from "../api"
-import { evText, STATUSES, STATUS_DOT, type InsightTask, type Insights, type RecentEvent, type TaskEvent } from "../types"
+import { evText, safeParse, STATUSES, STATUS_DOT, type InsightTask, type Insights, type RecentEvent, type TaskEvent } from "../types"
 
 const CARD = "rounded-lg border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-900"
 const H2 = "px-3 h-9 flex items-center font-medium text-xs text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-800"
 
-/** 监控页: 数据零新增, 全部由 /api/insights + /api/events/recent 派生 */
+/** 监控页: 数据零新增, 全部由 /api/insights + /api/events/recent + /api/dispatches 派生 */
 export default function Monitor({ rev, onOpen }: { rev: number; onOpen: (id: string) => void }) {
   const [ins, setIns] = useState<Insights | null>(null)
   const [evs, setEvs] = useState<RecentEvent[]>([])
+  const [disp, setDisp] = useState<{ task_id: string; pid: number; started: string }[]>([])
+  const [openAct, setOpenAct] = useState<string | null>(null) // 展开过程流的卡
+  const [acts, setActs] = useState<{ kind: string; text: string; ts: string }[]>([])
 
   useEffect(() => {
     api.insights().then(setIns).catch(() => {})
     api.recent(100).then(r => setEvs(r.events)).catch(() => {})
+    api.dispatches().then(r => setDisp(r.running)).catch(() => {})
   }, [rev])
+
+  // 展开某卡时 2s 轮询它的 AI 过程流(stream-json 摘要), 折叠即停
+  useEffect(() => {
+    if (!openAct) return
+    let stop = false
+    const tick = () => api.activity(openAct)
+      .then(r => { if (!stop) setActs(r.activities) })
+      .catch(() => {})
+    tick()
+    const iv = setInterval(tick, 2000)
+    return () => { stop = true; clearInterval(iv) }
+  }, [openAct])
 
   const counts = ins?.counts || {}
   return (
@@ -74,6 +90,31 @@ export default function Monitor({ rev, onOpen }: { rev: number; onOpen: (id: str
       {/* 执行者负载 */}
       <div className={`${CARD} h-fit shrink-0`}>
         <div className={H2}>执行者负载</div>
+        {disp.length > 0 && (
+          <ul className="px-3 pt-2 space-y-1">
+            {disp.map(d => (
+              <li key={d.task_id}>
+                <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                  <span className="animate-pulse">⟳</span>
+                  <button onClick={() => setOpenAct(openAct === d.task_id ? null : d.task_id)}
+                    className="truncate hover:underline flex-1 text-left" title="点开看 AI 正在做什么">
+                    AI 执行中 · {d.task_id} {openAct === d.task_id ? "▾" : "▸"}
+                  </button>
+                  <button
+                    onClick={() => api.stopDispatch(d.task_id).catch(() => {})}
+                    className="shrink-0 h-5 px-1.5 rounded text-red-500 hover:bg-red-500/10"
+                    title="强停该 AI 进程"
+                  >
+                    停止
+                  </button>
+                </div>
+                {openAct === d.task_id && (
+                  <ActivityStream acts={acts} />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
         <ul className="p-3 space-y-2.5">
           {ins?.load.map(d => {
             const total = d.active + d.review
@@ -97,6 +138,28 @@ export default function Monitor({ rev, onOpen }: { rev: number; onOpen: (id: str
         </ul>
       </div>
     </div>
+  )
+}
+
+/** AI 过程流(借鉴 zcode ToolCallBlock: 一行摘要, 人读优先, 最新在上) */
+function ActivityStream({ acts }: { acts: { kind: string; text: string; ts: string }[] }) {
+  if (!acts.length)
+    return <div className="ml-5 py-1 text-[11px] text-zinc-400">启动中，尚无输出…</div>
+  return (
+    <ul className="ml-5 my-1 p-1.5 rounded-md bg-zinc-50 dark:bg-zinc-800/60 max-h-56 overflow-y-auto space-y-0.5">
+      {[...acts].reverse().map((a, i) => (
+        <li key={i} className="flex gap-1.5 text-[11px] leading-relaxed">
+          <span className="text-zinc-400 dark:text-zinc-500 tabular-nums shrink-0">{a.ts?.slice(0, 8)}</span>
+          <span className="shrink-0" title={a.kind}>
+            {a.kind === "tool" ? "🔧" : a.kind === "done" ? "✅" : "💬"}
+          </span>
+          <span className={`break-all ${a.kind === "tool" ? "text-blue-600 dark:text-blue-400"
+            : a.kind === "done" ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-zinc-600 dark:text-zinc-300"}`}>
+            {a.text}
+          </span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -126,12 +189,4 @@ function NeedList({ ins, onOpen }: { ins: Insights | null; onOpen: (id: string) 
       ))}
     </ul>
   )
-}
-
-function safeParse(s: string): Record<string, unknown> {
-  try {
-    return JSON.parse(s || "{}")
-  } catch {
-    return {}
-  }
 }

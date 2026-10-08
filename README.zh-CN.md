@@ -18,6 +18,8 @@ Web 与 MCP 是两个独立进程共享同一个库。**Web 服务挂了，agent
 ## 特性
 
 - **看板网页**——暗/亮主题、拖拽排序（dnd-kit）、右侧抽屉（markdown 正文编辑、标签/优先级/截止/颜色）、SSE 实时更新
+- **变化看得见**——agent 在 CLI 侧的任何动作网页秒感知：新卡滑入高亮、变更卡描边、右上角活动通知（"xx 认领了「yy」"）
+- **网页派发 AI**——待执行卡点"⚡派发"一键放出 AI 执行者（`claude -p` + task-executor agent），认领/日志/交付实时滚入看板；监控页可看 AI 进程并强停（并发 ≤4）
 - **监控 Tab**——执行者负载、停滞卡、各阶段平均停留、实时事件流、规则建议（`GET /api/insights`）
 - **8 个 MCP 工具**——`list_tasks` `get_task` `create_task` `take_task`（原子防抢）`update_task` `set_status` `add_log` `get_insights`
 - **天生耐久**——WAL + busy_timeout、追加式事件表（进展历史唯一真源）、自动备份（每 50 次写一份、留 20 份）、镜像原子写、JSON 访问日志
@@ -62,6 +64,19 @@ python dev.py e2e            # Playwright 全流程冒烟（先 python dev.py bu
 python dev.py migrate-legacy "旧tasks目录" [--refresh]   # 导入旧 md 任务卡
 python dev.py backup         # 手动备份
 ```
+
+### 派发场景矩阵（实测通过，关键路径固化在 `backend/tests/test_dispatch.py`）
+
+| # | 场景 | 结果 |
+|---|---|---|
+| 1 | 三卡并行派发——互不串扰，交付各自正确 | ✅ |
+| 2 | 第 5 个并发派发 → 429（上限对齐模型并发预算） | ✅ |
+| 3 | 执行中强停——卡自动打回待执行清 owner，事件链全可追溯 | ✅ |
+| 4 | 执行中杀服务重启——活着的 AI 进程被收养，照常完成 | ✅ |
+| 5 | 孤儿卡（执行中但无进程）→ `/api/insights` 报失联 | ✅ |
+| 6 | 不可能任务——AI 诚实汇报失败，停在待验收 | ✅ |
+
+按多 agent 测试分层实践（单元 → 交接 → 编排压力）+ 混乱注入（杀进程/杀编排器/伪造孤儿）实测；发现的每条失败路径都固化成 pytest 回归。
 
 数据都在 `data/`（已 gitignore）。**在 `data/` 里 `git init` 即可免费获得卡片历史 diff**——镜像目录内容即全部，git log 就是变更史。备份落 `data/backups/`。
 
