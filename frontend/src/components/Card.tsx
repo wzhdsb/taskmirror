@@ -16,12 +16,14 @@ export default function Card({
   overlay,
   flash,
   onDispatch,
+  onReview,
 }: {
   task: Task
   onOpen?: (id: string) => void
   overlay?: boolean
   flash?: "new" | "upd"
   onDispatch?: (id: string) => void
+  onReview?: (id: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: t.id })
   const due = dueCls(t)
@@ -90,6 +92,19 @@ export default function Card({
             className="ml-auto h-5 px-1.5 rounded text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 transition-colors"
           >
             ⚡派发
+          </button>
+        )}
+        {!overlay && t.status === "待验收" && onReview && (
+          <button
+            title="派 AI 验收这张卡(逐项核验交付物, 三判: 通过/打回/转人工)"
+            onClick={e => {
+              e.stopPropagation()
+              onReview(t.id)
+            }}
+            onPointerDown={e => e.stopPropagation()}
+            className="ml-auto h-5 px-1.5 rounded text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+          >
+            ✔验收
           </button>
         )}
       </div>

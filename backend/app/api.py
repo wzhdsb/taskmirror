@@ -124,6 +124,10 @@ def create_app() -> FastAPI:
     def dispatch_task(cid: str):
         return service.dispatch(cid)
 
+    @app.post("/api/tasks/{cid}/review")
+    def review_task(cid: str):
+        return service.review(cid)
+
     @app.get("/api/dispatches")
     async def list_dispatches():
         return {"running": service.running()}
