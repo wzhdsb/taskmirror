@@ -249,7 +249,7 @@ function Cell({
           e.stopPropagation()
           onCreate(project, status)
         }}
-        className="h-8 shrink-0 rounded-md border border-dashed border-zinc-300 dark:border-zinc-700 text-xs text-zinc-400 hover:text-blue-500 hover:border-blue-500/60 transition-colors"
+        className="h-16 shrink-0 rounded-md border border-dashed border-zinc-300 dark:border-zinc-700 text-xs text-zinc-400 hover:text-blue-500 hover:border-blue-500/60 transition-colors"
       >
         ＋ 新建
       </button>
