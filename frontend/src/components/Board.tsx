@@ -206,7 +206,7 @@ export default function Board({
   )
 }
 
-/** 泳道格: 淡色块当列底, 独立 droppable(id=project|status), 星标置顶; 超约5张格内滚动; 点空白处=在该项目该列新建 */
+/** 泳道格: 淡色块当列底, 独立 droppable(id=project|status), 星标置顶; 超约5张格内滚动; 末尾虚线卡=唯一新建入口 */
 function Cell({
   droppableId,
   tasks,
@@ -232,9 +232,6 @@ function Cell({
   return (
     <div
       ref={setNodeRef}
-      onClick={e => {
-        if (e.target === e.currentTarget) onCreate(project, status)
-      }}
       className={`flex flex-col gap-1.5 min-h-20 max-h-[21rem] overflow-y-auto p-1.5 rounded-md transition-colors [scrollbar-width:thin] ${
         isOver ? "bg-blue-500/10 ring-1 ring-blue-500/50" : "bg-zinc-100/70 dark:bg-zinc-900/40"
       }`}
