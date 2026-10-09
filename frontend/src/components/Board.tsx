@@ -226,11 +226,14 @@ function Cell({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: droppableId })
   const sorted = [...tasks].sort((a, b) => (b.starred || 0) - (a.starred || 0))
+  const cut = droppableId.indexOf("|")
+  const project = droppableId.slice(0, cut)
+  const status = droppableId.slice(cut + 1)
   return (
     <div
       ref={setNodeRef}
       onClick={e => {
-        if (e.target === e.currentTarget) onCreate(droppableId.slice(0, droppableId.indexOf("|")), droppableId.slice(droppableId.indexOf("|") + 1))
+        if (e.target === e.currentTarget) onCreate(project, status)
       }}
       className={`flex flex-col gap-1.5 min-h-20 max-h-[21rem] overflow-y-auto p-1.5 rounded-md transition-colors [scrollbar-width:thin] ${
         isOver ? "bg-blue-500/10 ring-1 ring-blue-500/50" : "bg-zinc-100/70 dark:bg-zinc-900/40"
@@ -241,6 +244,15 @@ function Cell({
           <Card key={t.id} task={t} onOpen={onOpen} flash={flash[t.id]} onDispatch={onDispatch} onReview={onReview} />
         ))}
       </SortableContext>
+      <button
+        onClick={e => {
+          e.stopPropagation()
+          onCreate(project, status)
+        }}
+        className="h-8 shrink-0 rounded-md border border-dashed border-zinc-300 dark:border-zinc-700 text-xs text-zinc-400 hover:text-blue-500 hover:border-blue-500/60 transition-colors"
+      >
+        ＋ 新建
+      </button>
     </div>
   )
 }

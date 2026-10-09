@@ -16,7 +16,7 @@ export default function NewTaskDialog({
   const [body, setBody] = useState("")
   const [labels, setLabels] = useState("")
   const [project, setProject] = useState(preset?.project ?? "")
-  const [due, setDue] = useState("")
+  const [due, setDue] = useState(() => new Date().toLocaleDateString("sv")) // 默认今天, 免手填
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export default function NewTaskDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-[34rem] max-w-[92vw] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl p-4 dialog-in">
+      <div className="relative w-[44rem] max-w-[94vw] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl p-4 dialog-in">
         <h3 className="font-semibold mb-3">
           新建任务
           {preset && (
@@ -73,8 +73,8 @@ export default function NewTaskDialog({
           placeholder="正文 Markdown…（留空=快速卡「## 需求」，agent 接手时再整理；或直接四段式：① 任务 / ② 已知事实 / ③ 交付物 / ④ 注意）"
           value={body}
           onChange={e => setBody(e.target.value)}
-          rows={6}
-          className={input + " w-full mt-2.5 font-mono resize-y"}
+          rows={16}
+          className="w-full mt-2.5 px-2.5 py-2 rounded-md bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 outline-none focus:border-blue-500 text-xs leading-relaxed font-mono resize-y"
         />
         <div className="flex gap-2 mt-2.5">
           <input placeholder="标签,逗号分隔" value={labels} onChange={e => setLabels(e.target.value)} className={input + " flex-1"} />
