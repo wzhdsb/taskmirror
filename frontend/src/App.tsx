@@ -224,8 +224,7 @@ export default function App() {
 
       {tab === "board" ? (
         <Board tasks={tasks} done={done} onOpen={setOpenId} onMove={onMove} onNew={() => setShowNew(true)}
-          flash={flash} onDispatch={onDispatch} onReview={onReview}
-          onIsolate={p => setFilter(f => ({ ...f, project: p }))} />
+          flash={flash} onDispatch={onDispatch} onReview={onReview} />
       ) : (
         <Monitor rev={rev} onOpen={setOpenId} />
       )}

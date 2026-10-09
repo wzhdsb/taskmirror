@@ -27,7 +27,6 @@ export default function Board({
   flash,
   onDispatch,
   onReview,
-  onIsolate,
 }: {
   tasks: Task[]
   done: Task[]
@@ -37,7 +36,6 @@ export default function Board({
   flash: Record<string, "new" | "upd">
   onDispatch: (id: string) => void
   onReview: (id: string) => void
-  onIsolate: (project: string) => void
 }) {
   const [activeId, setActiveId] = useState<string | null>(null)
   // 折叠的泳道名持久化; 解析失败当全展开
@@ -162,8 +160,8 @@ export default function Board({
                     </button>
                     {p ? (
                       <button
-                        onClick={() => onIsolate(p)}
-                        title="只看这个项目(再点顶部「全部项目」恢复)"
+                        onClick={() => toggleLane(p)}
+                        title="折叠/展开泳道(单项目模式用顶部下拉)"
                         className="font-medium text-sm hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate max-w-72"
                       >
                         {p}
