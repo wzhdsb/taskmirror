@@ -16,7 +16,6 @@ import { STATUSES, STATUS_DOT, type Status, type Task } from "../types"
 import Card from "./Card"
 
 const GRID = "grid grid-cols-4 gap-3"
-const DONE_CAP = 5 // 完成列每道默认只显 5 张, 防归档卡把泳道撑出大片留白; 点「还有 N 张」展开
 
 export default function Board({
   tasks,
@@ -184,7 +183,6 @@ export default function Board({
                           key={STATUSES[i]}
                           droppableId={`${p}|${STATUSES[i]}`}
                           tasks={list}
-                          cap={STATUSES[i] === "完成" ? DONE_CAP : 0}
                           onOpen={onOpen}
                           flash={flash}
                           onDispatch={onDispatch}
@@ -205,11 +203,10 @@ export default function Board({
   )
 }
 
-/** 泳道格: 淡色块当列底(空格不再放占位文字), 独立 droppable(id=project|status), 星标置顶; cap>0 时截断显示 */
+/** 泳道格: 淡色块当列底, 独立 droppable(id=project|status), 星标置顶; 超约5张格内滚动(滑动条控剩余) */
 function Cell({
   droppableId,
   tasks,
-  cap,
   onOpen,
   flash,
   onDispatch,
@@ -217,45 +214,25 @@ function Cell({
 }: {
   droppableId: string
   tasks: Task[]
-  cap: number
   onOpen: (id: string) => void
   flash: Record<string, "new" | "upd">
   onDispatch: (id: string) => void
   onReview: (id: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: droppableId })
-  const [open, setOpen] = useState(false)
   const sorted = [...tasks].sort((a, b) => (b.starred || 0) - (a.starred || 0))
-  const shown = cap && !open ? sorted.slice(0, cap) : sorted
-  const hidden = sorted.length - shown.length
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col gap-1.5 min-h-20 p-1.5 rounded-md transition-colors ${
+      className={`flex flex-col gap-1.5 min-h-20 max-h-[21rem] overflow-y-auto p-1.5 rounded-md transition-colors [scrollbar-width:thin] ${
         isOver ? "bg-blue-500/10 ring-1 ring-blue-500/50" : "bg-zinc-100/70 dark:bg-zinc-900/40"
       }`}
     >
-      <SortableContext items={shown.map(t => t.id)} strategy={verticalListSortingStrategy}>
-        {shown.map(t => (
+      <SortableContext items={sorted.map(t => t.id)} strategy={verticalListSortingStrategy}>
+        {sorted.map(t => (
           <Card key={t.id} task={t} onOpen={onOpen} flash={flash[t.id]} onDispatch={onDispatch} onReview={onReview} />
         ))}
       </SortableContext>
-      {hidden > 0 && (
-        <button
-          onClick={() => setOpen(true)}
-          className="h-6 shrink-0 rounded text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200/70 dark:hover:bg-zinc-800/70 select-none"
-        >
-          ▾ 还有 {hidden} 张
-        </button>
-      )}
-      {hidden === 0 && cap > 0 && sorted.length > cap && (
-        <button
-          onClick={() => setOpen(false)}
-          className="h-6 shrink-0 rounded text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 select-none"
-        >
-          ▴ 收起
-        </button>
-      )}
     </div>
   )
 }
