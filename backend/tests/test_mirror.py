@@ -11,7 +11,8 @@ def _files(home, sub=""):
 
 
 def test_mirror_placement_and_compat(home):
-    d = service.create("镜像测试", body="## ① 任务\n\n干活", labels=["pdp"], priority="high")
+    d = service.create("镜像测试", body="## ① 任务\n\n干活", labels=["pdp"],
+                       project="taskmirror", starred=True)
     t = d["task"]
     fp = home / "tasks" / f"{t['id']}.md"
     text = fp.read_text(encoding="utf-8")
@@ -19,7 +20,7 @@ def test_mirror_placement_and_compat(home):
     meta, body = parse_card(text)
     assert meta["id"] == t["id"] and meta["title"] == "镜像测试"
     assert meta["status"] == "待执行" and meta["owner"] == ""
-    assert "priority: high" in text and '"pdp"' in text
+    assert "project: taskmirror" in text and "starred: true" in text and '"pdp"' in text
     assert "自动生成" in text and "## ① 任务" in body
 
     service.add_log(t["id"], "第一行日志", actor="w1")

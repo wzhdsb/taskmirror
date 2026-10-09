@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { api } from "../api"
-import { COLORS, PRIORITIES, STATUSES, STATUS_BAR, STATUS_DOT, evText, type Detail, type Task } from "../types"
+import { COLORS, STATUSES, STATUS_BAR, STATUS_DOT, evText, type Detail, type Task } from "../types"
 
 export default function CardDrawer({
   id,
@@ -152,13 +152,35 @@ export default function CardDrawer({
               认领
             </button>
           )}
-          <select className={input} value={t.priority} onChange={e => save(() => api.patch(id, { priority: e.target.value }))}>
-            {PRIORITIES.map(p => (
-              <option key={p} value={p}>
-                {p === "normal" ? "优先级" : p}
-              </option>
+          <button
+            onClick={() => save(() => api.patch(id, { starred: t.starred ? 0 : 1 }))}
+            title="星标=下一批要做的, 列内自动置顶"
+            className={`h-7 px-2 rounded-md text-xs border transition-colors ${
+              t.starred
+                ? "border-amber-400 bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                : "border-zinc-200 dark:border-zinc-700 text-zinc-400 hover:text-amber-500"
+            }`}
+          >
+            ★ {t.starred ? "已星标" : "星标"}
+          </button>
+          <input
+            key={t.updated}
+            defaultValue={t.project}
+            list="tm-projects"
+            placeholder="项目(泳道)"
+            onBlur={e => {
+              const v = e.target.value.trim()
+              if (v !== t.project) save(() => api.patch(id, { project: v }))
+            }}
+            onKeyDown={e => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            className={input + " w-32"}
+            title="所属项目=泳道分组, 清空归未分组"
+          />
+          <datalist id="tm-projects">
+            {[...new Set(all.map(x => x.project).filter(Boolean))].map(p => (
+              <option key={p} value={p} />
             ))}
-          </select>
+          </datalist>
           <input type="date" className={input} value={t.due || ""} onChange={e => save(() => api.patch(id, { due: e.target.value || "" }))} />
           <div className="flex items-center gap-1 ml-auto">
             {COLORS.map(c => (

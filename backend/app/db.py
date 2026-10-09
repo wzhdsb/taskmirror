@@ -58,6 +58,24 @@ MIGRATIONS: dict[int, list[str]] = {
            UPDATE tasks SET code = (SELECT mm || '-' || n FROM d WHERE d.id = tasks.id)
            WHERE code = ''""",
     ],
+    5: [
+        # 泳道分组(project) + 星标(starred): priority 枚举退役(全归 normal, urgent 转星标), 列保留兼容旧字段
+        "ALTER TABLE tasks ADD COLUMN project TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE tasks ADD COLUMN starred INTEGER NOT NULL DEFAULT 0",
+        "UPDATE tasks SET starred=1 WHERE priority='urgent'",
+        "UPDATE tasks SET priority='normal'",
+        # 存量 project 回填: 按标题前缀/已知 id 特征映射, 识别不了的留空(前端「未分组」道, 抽屉里改)
+        """UPDATE tasks SET project = CASE
+               WHEN title LIKE 'boboai-web%' THEN 'boboai-web'
+               WHEN title LIKE 'mobile_ai_assistant%' THEN 'mobile_ai_assistant'
+               WHEN title LIKE 'legal-advisor%' THEN 'legal-advisor'
+               WHEN title LIKE 'desktop-pet%' OR title LIKE 'plan %' THEN 'plan'
+               WHEN title LIKE 'BandaiHunterPC%' THEN 'BandaiHunterPC'
+               WHEN id LIKE '%e2e-midplat%' OR title LIKE 'e2e_midplat%' THEN 'e2e_midplat'
+               WHEN title LIKE '%TaskMirror%' OR labels LIKE '%"taskmirror"%' THEN 'taskmirror'
+               ELSE '' END
+           WHERE project = ''""",
+    ],
 }
 
 _backup_lock = threading.Lock()

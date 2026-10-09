@@ -1,21 +1,22 @@
 import { useEffect, useState } from "react"
 import { api } from "../api"
-import { PRIORITIES } from "../types"
 
 export default function NewTaskDialog({
   onClose,
   onCreated,
   toast,
+  preset,
 }: {
   onClose: () => void
   onCreated: () => void
   toast: (m: string) => void
+  preset?: { project: string; status: string } | null // 点格子空白处带入: 泳道项目+目标列
 }) {
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [labels, setLabels] = useState("")
-  const [priority, setPriority] = useState<string>("normal")
-  const [due, setDue] = useState("")
+  const [project, setProject] = useState(preset?.project ?? "")
+  const [due, setDue] = useState(() => new Date().toLocaleDateString("sv")) // 默认今天, 免手填
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -30,13 +31,14 @@ export default function NewTaskDialog({
     if (!title.trim() || busy) return
     setBusy(true)
     try {
-      await api.create({
+      const r = await api.create({
         title,
         body,
         labels: labels.split(",").map(s => s.trim()).filter(Boolean),
-        priority,
+        project: project.trim(),
         due: due || "",
       })
+      if (preset?.status && preset.status !== "待执行") await api.move(r.task.id, preset.status, null)
       onCreated()
       onClose()
     } catch (e) {
@@ -50,8 +52,15 @@ export default function NewTaskDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-[34rem] max-w-[92vw] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl p-4 dialog-in">
-        <h3 className="font-semibold mb-3">新建任务</h3>
+      <div className="relative w-[44rem] max-w-[94vw] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl p-4 dialog-in">
+        <h3 className="font-semibold mb-3">
+          新建任务
+          {preset && (
+            <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-normal">
+              {preset.project || "未分组"} · {preset.status}
+            </span>
+          )}
+        </h3>
         <input
           autoFocus
           placeholder="标题（回车直接创建）"
@@ -64,18 +73,12 @@ export default function NewTaskDialog({
           placeholder="正文 Markdown…（留空=快速卡「## 需求」，agent 接手时再整理；或直接四段式：① 任务 / ② 已知事实 / ③ 交付物 / ④ 注意）"
           value={body}
           onChange={e => setBody(e.target.value)}
-          rows={6}
-          className={input + " w-full mt-2.5 font-mono resize-y"}
+          rows={16}
+          className="w-full mt-2.5 px-2.5 py-2 rounded-md bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 outline-none focus:border-blue-500 text-xs leading-relaxed font-mono resize-y"
         />
         <div className="flex gap-2 mt-2.5">
           <input placeholder="标签,逗号分隔" value={labels} onChange={e => setLabels(e.target.value)} className={input + " flex-1"} />
-          <select value={priority} onChange={e => setPriority(e.target.value)} className={input}>
-            {PRIORITIES.map(p => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+          <input placeholder="项目(泳道,可空)" value={project} onChange={e => setProject(e.target.value)} className={input + " w-32"} />
           <input type="date" value={due} onChange={e => setDue(e.target.value)} className={input} />
         </div>
         <div className="flex justify-end gap-2 mt-4">

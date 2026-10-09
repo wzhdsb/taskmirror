@@ -15,12 +15,15 @@ import { useState } from "react"
 import { STATUSES, STATUS_DOT, type Status, type Task } from "../types"
 import Card from "./Card"
 
+const GRID = "grid grid-cols-4 gap-3"
+
 export default function Board({
   tasks,
   done,
   onOpen,
   onMove,
   onNew,
+  onCreate,
   flash,
   onDispatch,
   onReview,
@@ -28,14 +31,30 @@ export default function Board({
   tasks: Task[]
   done: Task[]
   onOpen: (id: string) => void
-  onMove: (id: string, status: string, beforeId: string | null) => void
+  onMove: (id: string, status: string, beforeId: string | null, project?: string) => void
   onNew: () => void
+  onCreate: (project: string, status: string) => void
   flash: Record<string, "new" | "upd">
   onDispatch: (id: string) => void
   onReview: (id: string) => void
 }) {
   const [activeId, setActiveId] = useState<string | null>(null)
-  // 碰撞候选排除被拖卡自身, 否则空列时它离指针"最近"导致拖不动
+  // 折叠的泳道名持久化; 解析失败当全展开
+  const [collapsed, setCollapsed] = useState<string[]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem("tm_lanes") || "[]")
+      return Array.isArray(v) ? v.filter(x => typeof x === "string") : []
+    } catch {
+      return []
+    }
+  })
+  const toggleLane = (p: string) =>
+    setCollapsed(v => {
+      const n = v.includes(p) ? v.filter(x => x !== p) : [...v, p]
+      localStorage.setItem("tm_lanes", JSON.stringify(n))
+      return n
+    })
+  // 碰撞候选排除被拖卡自身, 否则空格时它离指针"最近"导致拖不动
   const collision: CollisionDetection = args =>
     closestCorners({ ...args, droppableContainers: args.droppableContainers.filter(c => c.id !== args.active.id) })
   const sensors = useSensors(
@@ -45,6 +64,17 @@ export default function Board({
   const all = [...tasks, ...done]
   const active = all.find(t => t.id === activeId)
 
+  // 泳道: 按 project 分组, 活跃度(最新 updated)排序, 未分组永远垫底; 空道自然消失
+  const laneOf = (t: Task) => t.project || ""
+  const names = [...new Set(all.map(laneOf))]
+  const fresh = (p: string) => Math.max(...all.filter(t => laneOf(t) === p).map(t => Date.parse(t.updated) || 0))
+  const lanes = [...names.filter(p => p !== "").sort((a, b) => fresh(b) - fresh(a)), ...names.filter(p => p === "")]
+
+  function cell(p: string, s: Status): Task[] {
+    const inLane = (t: Task) => laneOf(t) === p
+    return s === "完成" ? all.filter(t => t.status === s && inLane(t)) : tasks.filter(t => t.status === s && inLane(t))
+  }
+
   function handleEnd(e: DragEndEvent) {
     setActiveId(null)
     const { active: a, over } = e
@@ -52,11 +82,43 @@ export default function Board({
     const id = String(a.id)
     const overId = String(over.id)
     if (overId === id) return // 原地
-    const toStatus = STATUSES.find(s => s === overId) ?? all.find(x => x.id === overId)?.status
+    let toStatus: Status | undefined
+    let toProject: string | undefined
+    let beforeId: string | null = null
+    if (overId.includes("|")) {
+      // 泳道格子本体 = 该格列尾; id 形如 "project|status"
+      const i = overId.indexOf("|")
+      toProject = overId.slice(0, i)
+      toStatus = STATUSES.find(s => s === overId.slice(i + 1))
+    } else {
+      const target = all.find(x => x.id === overId)
+      if (!target) return
+      toStatus = target.status
+      toProject = laneOf(target)
+      beforeId = overId // 插在被覆盖卡前面
+    }
     if (!toStatus) return
-    if (overId === toStatus) onMove(id, toStatus, null) // 放到列体 = 列尾
-    else onMove(id, toStatus, overId) // 插在被覆盖卡前面
+    const src = all.find(x => x.id === id)
+    const projChanged = !!src && toProject !== undefined && laneOf(src) !== toProject
+    if (projChanged) {
+      const from = laneOf(src!) || "未分组"
+      const to = toProject || "未分组"
+      if (!window.confirm(`把「${src!.title}」从「${from}」移到「${to}」？\n(将更新所属项目)`)) return
+    }
+    onMove(id, toStatus, beforeId, projChanged ? toProject : undefined)
   }
+
+  if (!all.length)
+    return (
+      <div className="flex-1 grid place-items-center p-8">
+        <button
+          onClick={onNew}
+          className="px-8 py-6 rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 text-sm text-zinc-500 hover:text-blue-500 hover:border-blue-500/60 transition-colors"
+        >
+          + 新建第一张任务卡
+        </button>
+      </div>
+    )
 
   return (
     <DndContext
@@ -66,23 +128,129 @@ export default function Board({
       onDragEnd={handleEnd}
       onDragCancel={() => setActiveId(null)}
     >
-      <div className="flex-1 flex gap-4 p-4 overflow-x-auto">
-        {STATUSES.map(s => (
-          <Column
-            key={s}
-            status={s}
-            tasks={s === "完成" ? [...tasks.filter(t => t.status === s), ...done] : tasks.filter(t => t.status === s)}
-            onOpen={onOpen}
-            onNew={s === "待执行" ? onNew : undefined}
-            flash={flash}
-            onDispatch={onDispatch}
-            onReview={onReview}
-          />
-        ))}
+      <div className="flex-1 flex gap-4 overflow-hidden">
+        <div className="flex-1 overflow-auto px-4 pb-4">{/* 顶部零内衬: sticky 表头吸附点=容器顶, 不留透缝 */}
+          <div className="min-w-[60rem] flex flex-col gap-2.5">
+            {/* 状态列表头: 与泳道同网格模板(无边框无内衬) → 列必对齐; 吸顶时整条实底盖住滚动内容 */}
+            <div className="sticky top-0 z-10 -mx-4 px-4 pt-1 pb-1.5 bg-zinc-50 dark:bg-zinc-950">
+              <div className={GRID}>
+                {STATUSES.map(s => (
+                  <div key={s} className="flex items-center gap-2 px-1.5 h-7">
+                    <span className={`size-2 rounded-full ${STATUS_DOT[s]}`} />
+                    <span className="font-medium text-sm">{s}</span>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">{all.filter(t => t.status === s).length}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {lanes.map(p => {
+              const cells = STATUSES.map(s => cell(p, s))
+              const total = cells.reduce((n, c) => n + c.length, 0)
+              const stars = cells.reduce((n, c) => n + c.filter(t => t.starred).length, 0)
+              const fold = collapsed.includes(p)
+              return (
+                <section key={p || "__none"}>
+                  {/* 泳道头: 通栏色条区分项目, 网格不带盒子 → 与表头同宽对齐 */}
+                  <header className="flex items-center gap-2 h-8 px-2.5 rounded-md bg-zinc-200/50 dark:bg-zinc-800/50">
+                    <button
+                      onClick={() => toggleLane(p)}
+                      className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs w-4 shrink-0"
+                      title={fold ? "展开泳道" : "折叠泳道"}
+                    >
+                      {fold ? "▶" : "▼"}
+                    </button>
+                    {p ? (
+                      <button
+                        onClick={() => toggleLane(p)}
+                        title="折叠/展开泳道(单项目模式用顶部下拉)"
+                        className="font-medium text-sm hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate max-w-72"
+                      >
+                        {p}
+                      </button>
+                    ) : (
+                      <span className="font-medium text-sm text-zinc-500 dark:text-zinc-400">未分组</span>
+                    )}
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums">{total}</span>
+                    {stars > 0 && <span className="text-xs text-amber-500">★{stars}</span>}
+                    {fold && (
+                      <span className="text-xs text-zinc-400 truncate">
+                        {STATUSES.map((s, i) => `${s} ${cells[i].length}`).join(" · ")}
+                      </span>
+                    )}
+                  </header>
+                  {!fold && (
+                    <div className={`${GRID} mt-1.5`}>
+                      {cells.map((list, i) => (
+                        <Cell
+                          key={STATUSES[i]}
+                          droppableId={`${p}|${STATUSES[i]}`}
+                          tasks={list}
+                          onOpen={onOpen}
+                          flash={flash}
+                          onDispatch={onDispatch}
+                          onReview={onReview}
+                          onCreate={onCreate}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )
+            })}
+          </div>
+        </div>
         <TreeColumn all={all} onOpen={onOpen} />
       </div>
       <DragOverlay>{active && <Card task={active} overlay />}</DragOverlay>
     </DndContext>
+  )
+}
+
+/** 泳道格: 淡色块当列底, 独立 droppable(id=project|status), 星标置顶; 超约5张格内滚动; 末尾虚线卡=唯一新建入口 */
+function Cell({
+  droppableId,
+  tasks,
+  onOpen,
+  flash,
+  onDispatch,
+  onReview,
+  onCreate,
+}: {
+  droppableId: string
+  tasks: Task[]
+  onOpen: (id: string) => void
+  flash: Record<string, "new" | "upd">
+  onDispatch: (id: string) => void
+  onReview: (id: string) => void
+  onCreate: (project: string, status: string) => void
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: droppableId })
+  const sorted = [...tasks].sort((a, b) => (b.starred || 0) - (a.starred || 0))
+  const cut = droppableId.indexOf("|")
+  const project = droppableId.slice(0, cut)
+  const status = droppableId.slice(cut + 1)
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col gap-1.5 min-h-20 max-h-[21rem] overflow-y-auto p-1.5 rounded-md transition-colors [scrollbar-width:thin] ${
+        isOver ? "bg-blue-500/10 ring-1 ring-blue-500/50" : "bg-zinc-100/70 dark:bg-zinc-900/40"
+      }`}
+    >
+      <SortableContext items={sorted.map(t => t.id)} strategy={verticalListSortingStrategy}>
+        {sorted.map(t => (
+          <Card key={t.id} task={t} onOpen={onOpen} flash={flash[t.id]} onDispatch={onDispatch} onReview={onReview} />
+        ))}
+      </SortableContext>
+      <button
+        onClick={e => {
+          e.stopPropagation()
+          onCreate(project, status)
+        }}
+        className="h-16 shrink-0 rounded-md border border-dashed border-zinc-300 dark:border-zinc-700 text-xs text-zinc-400 hover:text-blue-500 hover:border-blue-500/60 transition-colors"
+      >
+        ＋ 新建
+      </button>
+    </div>
   )
 }
 
@@ -92,7 +260,7 @@ function TreeColumn({ all, onOpen }: { all: Task[]; onOpen: (id: string) => void
   const groups = treeGroups(all)
   return (
     <>
-      <section className="flex flex-col flex-1 min-w-[14rem] max-w-[20rem] shrink-0 rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60">
+      <section className="flex flex-col w-64 shrink-0 rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60">
         <header className="flex items-center gap-2 px-3 h-9 shrink-0">
           <span className="text-zinc-400">⧉</span>
           <span className="font-medium text-zinc-600 dark:text-zinc-300">任务树</span>
@@ -206,62 +374,5 @@ function TreeDrawer({ group, onClose, onOpen }: {
         </ul>
       </aside>
     </>
-  )
-}
-
-function Column({
-  status,
-  tasks,
-  onOpen,
-  onNew,
-  flash,
-  onDispatch,
-  onReview,
-}: {
-  status: Status
-  tasks: Task[]
-  onOpen: (id: string) => void
-  onNew?: () => void
-  flash: Record<string, "new" | "upd">
-  onDispatch: (id: string) => void
-  onReview: (id: string) => void
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: status })
-  return (
-    <section
-      ref={setNodeRef}
-      className={`flex flex-col flex-1 min-w-[17rem] max-w-[24rem] shrink-0 rounded-lg border transition-colors ${
-        isOver
-          ? "border-blue-500/60 bg-blue-50/50 dark:bg-blue-950/20"
-          : "border-zinc-200 dark:border-zinc-700/60 bg-zinc-100 dark:bg-zinc-900"
-      }`}
-    >
-      <header className="flex items-center gap-2 px-3 h-9 shrink-0">
-        <span className={`size-2 rounded-full ${STATUS_DOT[status]}`} />
-        <span className="font-medium">{status}</span>
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">{tasks.length}</span>
-      </header>
-      <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2 min-h-24">
-        <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          {tasks.map(t => (
-            <Card key={t.id} task={t} onOpen={onOpen} flash={flash[t.id]} onDispatch={onDispatch} onReview={onReview} />
-          ))}
-        </SortableContext>
-        {!tasks.length && onNew ? (
-          <div className="flex-1 grid place-items-center">
-            <button
-              onClick={onNew}
-              className="w-full py-6 rounded-md border border-dashed border-zinc-300 dark:border-zinc-700 text-xs text-zinc-500 hover:text-blue-500 hover:border-blue-500/60 transition-colors"
-            >
-              + 新建第一张任务卡
-            </button>
-          </div>
-        ) : (
-          !tasks.length && (
-            <div className="flex-1 grid place-items-center text-xs text-zinc-400 dark:text-zinc-400 select-none">拖卡到这里</div>
-          )
-        )}
-      </div>
-    </section>
   )
 }

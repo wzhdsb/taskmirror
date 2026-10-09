@@ -244,7 +244,12 @@ def _stage_durations(c: sqlite3.Connection) -> dict:
 
 # ---------- 写 ----------
 
-def create(title, body="", labels=None, priority="normal", due=None, color=None, actor="webui") -> dict:
+def _norm_project(v) -> str:
+    return re.sub(r"[\n\r]", " ", (v or "")).strip()[:40]
+
+
+def create(title, body="", labels=None, priority="normal", due=None, color=None,
+           project="", starred=False, actor="webui") -> dict:
     title = re.sub(r"[\n\r]", " ", title or "").strip()
     if not title:
         raise ApiError(400, "标题不能为空")
@@ -252,6 +257,7 @@ def create(title, body="", labels=None, priority="normal", due=None, color=None,
         raise ApiError(400, "非法 priority")
     _check_due(due)
     labels = _norm_labels(labels)
+    project = _norm_project(project)
     ts = now()
     with _lock:
         c = db.conn()
@@ -268,9 +274,11 @@ def create(title, body="", labels=None, priority="normal", due=None, color=None,
             pos = c.execute("SELECT COALESCE(MAX(position),-1)+1 FROM tasks "
                             "WHERE board_id=1 AND status='待执行'").fetchone()[0]
             c.execute("INSERT INTO tasks(id, board_id, title, status, owner, priority, labels, color, "
-                      "due, body, position, created, updated, code) VALUES(?,1,?,'待执行','',?,?,?,?,?,?,?,?,?)",
+                      "due, body, position, created, updated, code, project, starred) "
+                      "VALUES(?,1,?,'待执行','',?,?,?,?,?,?,?,?,?,?,?)",
                       (cid, title, priority, json.dumps(labels, ensure_ascii=False), color, due,
-                       (body or "").strip() or "## 需求", pos, ts, ts, f"{mmdd}-{nseq}"))
+                       (body or "").strip() or "## 需求", pos, ts, ts, f"{mmdd}-{nseq}", project,
+                       1 if starred else 0))
             _ev(c, cid, "created", {"title": title}, actor)
             db.bump_rev(c)
         loaded = _load_for_mirror(c, cid)
@@ -312,6 +320,11 @@ def patch(cid, actor=None, **f) -> dict:
                 sets["due"], _ = f["due"], evs.append(("due", {"to": f["due"]}))
             if f.get("color") is not None:
                 sets["color"], _ = (f["color"] or None), evs.append(("color", {"to": f["color"]}))
+            if f.get("project") is not None:
+                p = _norm_project(f["project"])
+                sets["project"], _ = p, evs.append(("project", {"to": p}))
+            if f.get("starred") is not None:
+                sets["starred"], _ = (1 if f["starred"] else 0), evs.append(("starred", {"to": bool(f["starred"])}))
             if not sets:
                 pass  # 空补丁: 不动
             else:

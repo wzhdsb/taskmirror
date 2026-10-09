@@ -34,7 +34,7 @@ export default function Card({
       <div className="flex items-start gap-1">
         {t.code && <span className="mt-0.5 px-1 rounded bg-zinc-100 dark:bg-zinc-700/70 text-zinc-400 dark:text-zinc-300 text-[10px] font-mono shrink-0" title={`短代号 ${t.code}(口头引用用)`}>{t.code}</span>}
         <p className="flex-1 line-clamp-2 font-medium leading-snug break-all">{t.title}</p>
-        {t.priority === "urgent" && <span className="mt-1 size-1.5 rounded-full bg-red-500 shrink-0" title="urgent" />}
+        {!!t.starred && <span className="mt-0.5 text-amber-500 shrink-0" title="星标：下一批要做的">★</span>}
       </div>
       {t.stepsTotal > 0 && (
         <div className="mt-1 flex items-center gap-1" title={`任务节点 ${t.stepsDone}/${t.stepsTotal}`}>
@@ -79,7 +79,6 @@ export default function Card({
             📅 {t.due.slice(5)}
           </span>
         )}
-        {t.priority === "high" && <span className="text-orange-500">▲</span>}
         {t.color && <span className="size-2 rounded-full" style={{ background: t.color }} />}
         {!overlay && t.status === "待执行" && onDispatch && (
           <button
