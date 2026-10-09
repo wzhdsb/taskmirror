@@ -412,6 +412,16 @@ def relate(cid, target, kind="related", remove=False, actor=None) -> dict:
                 raise ApiError(404, f"目标卡 {target} 不存在")
             if row["status"] == "完成":
                 raise ApiError(400, "已归档, 仅可重开(移回前四态)")
+            if kind == "depends" and not remove:  # 环防护: target 沿 depends 链走回 cid 即拒
+                dep = {r[0]: json.loads(r[1]) for r in c.execute("SELECT id, depends FROM tasks")}
+                seen, stack = {target}, [target]
+                while stack:
+                    for nxt in dep.get(stack.pop(), []):
+                        if nxt == cid:
+                            raise ApiError(400, f"会成环: {target} 已(间接)依赖 {cid}")
+                        if nxt in dep and nxt not in seen:
+                            seen.add(nxt)
+                            stack.append(nxt)
             cur = _serialize(row)[kind]
             new = ([x for x in cur if x != target] if remove
                    else (cur + [target] if target not in cur else cur))

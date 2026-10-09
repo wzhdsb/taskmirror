@@ -107,6 +107,23 @@ def test_create_default_body(home):
         assert c.get(f"/api/tasks/{tid2}").json()["task"]["body"].startswith("## ①")
 
 
+def test_depends_cycle_guard(home):
+    """环防护: 直接环与三连环均 400, related 不受限, 摘除后可重建。"""
+    with TestClient(create_app()) as c:
+        a, b, d = _mk(c, "环A"), _mk(c, "环B"), _mk(c, "环D")
+        assert c.post(f"/api/tasks/{a}/relate", json={"target": b, "kind": "depends"}).status_code == 200
+        # 两连环: B→A
+        assert c.post(f"/api/tasks/{b}/relate", json={"target": a, "kind": "depends"}).status_code == 400
+        # 三连环: A→B→D 后 D→A 成环
+        assert c.post(f"/api/tasks/{b}/relate", json={"target": d, "kind": "depends"}).status_code == 200
+        assert c.post(f"/api/tasks/{d}/relate", json={"target": a, "kind": "depends"}).status_code == 400
+        # related 同目标不受限
+        assert c.post(f"/api/tasks/{d}/relate", json={"target": a}).status_code == 200
+        # 摘掉环上 B→D 后 D→A 可建
+        c.post(f"/api/tasks/{b}/relate", json={"target": d, "kind": "depends", "remove": True})
+        assert c.post(f"/api/tasks/{d}/relate", json={"target": a, "kind": "depends"}).status_code == 200
+
+
 def test_mirror_related_keys(home):
     """镜像 frontmatter 非空才写 related/depends, 逗号分隔。"""
     with TestClient(create_app()) as c:
