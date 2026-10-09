@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "taskmirror"
-version = "0.1.0"
+version = "0.2.0"
 description = "本地优先的 AI 原生任务看板: SQLite 真源 + md 镜像 + MCP, 人类与 agent 共板"
 requires-python = ">=3.10"
 dependencies = ["fastapi>=0.110", "uvicorn>=0.29", "pydantic>=2", "mcp>=1.2"]  # mcp 1.x/2.x 双兼容(见 mcp_server.py)
