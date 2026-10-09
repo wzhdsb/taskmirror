@@ -30,9 +30,20 @@ export default function Card({
   const inner = (
     <div className="p-2 pl-2.5">
       <div className="flex items-start gap-1">
+        {t.code && <span className="mt-0.5 px-1 rounded bg-zinc-100 dark:bg-zinc-700/70 text-zinc-400 dark:text-zinc-300 text-[10px] font-mono shrink-0" title={`短代号 ${t.code}(口头引用用)`}>{t.code}</span>}
         <p className="flex-1 line-clamp-2 font-medium leading-snug break-all">{t.title}</p>
         {t.priority === "urgent" && <span className="mt-1 size-1.5 rounded-full bg-red-500 shrink-0" title="urgent" />}
       </div>
+      {t.stepsTotal > 0 && (
+        <div className="mt-1 flex items-center gap-1" title={`任务节点 ${t.stepsDone}/${t.stepsTotal}`}>
+          <div className="flex gap-0.5 flex-1 min-w-12">
+            {Array.from({ length: t.stepsTotal }, (_, i) => (
+              <span key={i} className={`h-1 flex-1 rounded-full ${i < t.stepsDone ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700"}`} />
+            ))}
+          </div>
+          <span className="text-[10px] tabular-nums text-zinc-400">{t.stepsDone}/{t.stepsTotal}</span>
+        </div>
+      )}
       <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-300">
         {t.owner && (
           <span className="px-1.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 max-w-24 truncate">{t.owner}</span>

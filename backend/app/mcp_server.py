@@ -18,7 +18,7 @@ def _md_detail(d: dict) -> str:
     t = d["task"]
     lines = [
         f"# {t['title']}",
-        f"id: {t['id']} | status: {t['status']} | owner: {t['owner'] or '-'} | "
+        f"id: {t['id']} | code: {t.get('code') or '-'} | status: {t['status']} | owner: {t['owner'] or '-'} | "
         f"priority: {t['priority']} | labels: {'、'.join(t['labels']) or '-'} | "
         f"due: {t['due'] or '-'} | created: {t['created']} | updated: {t['updated']}",
         "",
@@ -38,7 +38,7 @@ if FastMCP is not None:
     @mcp.tool()
     def list_tasks(status: str = "", owner: str = "", limit: int = 50) -> str:
         """列出任务卡。status: 待执行/执行中/待验收/完成, 留空=非完成全部; owner 留空=全部。
-        返回紧凑清单: 每行 `id | status | owner | title`。"""
+        返回紧凑清单: 每行 `code | id | status | owner | title`(有节点进度再附 ▸n/N)。"""
         try:
             b = service.board()
             rows = b["tasks"] + b["done"]
@@ -50,7 +50,8 @@ if FastMCP is not None:
             if not rows:
                 return "没有匹配的任务卡。"
             return "\n".join(
-                f"{t['id']} | {t['status']} | {t['owner'] or '-'} | {t['title']}"
+                f"{t.get('code') or '-'} | {t['id']} | {t['status']} | {t['owner'] or '-'} | {t['title']}"
+                + (f" | ▸{t['stepsDone']}/{t['stepsTotal']}" if t.get("stepsTotal") else "")
                 + (f" | ⏳前置未完成: {','.join(t['waiting'])}" if t.get("waiting") else "")
                 + (f" | ⧉{len(t['related']) + len(t['relatesBack'])}" if t.get("related") or t.get("relatesBack") else "")
                 for t in rows)
@@ -78,8 +79,9 @@ if FastMCP is not None:
 
     @mcp.tool()
     def take_task(owner: str, id: str = "") -> str:
-        """认领任务卡: 原子防抢, 待执行→执行中。id 留空=自动捞最旧的无人待执行卡
-        (被未完成 depends 前置阻塞的卡自动跳过; 有 id 但前置未完成会报错, 先推进前置或换卡)。"""
+        """认领任务卡: 原子防抢, 待执行→执行中。id 可传完整 id 或短代号 code(如 1009-3);
+        留空=自动捞最旧的无人待执行卡(被未完成 depends 前置阻塞的卡自动跳过;
+        有 id 但前置未完成会报错, 先推进前置或换卡)。"""
         try:
             d = service.take(owner, id or None)
             t = d["task"]

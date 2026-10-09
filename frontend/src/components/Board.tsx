@@ -102,7 +102,10 @@ function TreeColumn({ all, onOpen }: { all: Task[]; onOpen: (id: string) => void
               onClick={() => setOpen(g)}
               className="rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-2 text-left hover:shadow-md transition-shadow"
             >
-              <p className="text-xs font-medium line-clamp-1">{g[0].title}</p>
+              <p className="text-xs font-medium line-clamp-1">
+                {g[0].code && <span className="mr-1 px-1 rounded bg-zinc-100 dark:bg-zinc-700/70 text-zinc-400 text-[10px] font-mono">{g[0].code}</span>}
+                {g[0].title}
+              </p>
               <div className="mt-1.5 flex flex-wrap gap-1 items-center text-[11px]">
                 {g.map(m => (
                   <span key={m.id} className={`size-1.5 rounded-full ${STATUS_DOT[m.status]}`} title={`${m.title} (${m.status})`} />
@@ -190,6 +193,7 @@ function TreeDrawer({ group, onClose, onOpen }: {
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-left"
               >
                 <span className={`size-2 rounded-full shrink-0 ${STATUS_DOT[t.status]}`} />
+                {t.code && <span className="px-1 rounded bg-zinc-100 dark:bg-zinc-700/70 text-zinc-400 text-[10px] font-mono shrink-0">{t.code}</span>}
                 <span className="flex-1 truncate text-sm">{t.title}</span>
                 {t.owner && <span className="text-[11px] text-blue-600 dark:text-blue-400 shrink-0">{t.owner}</span>}
                 <span className="text-[11px] text-zinc-400 shrink-0">{t.status}</span>
