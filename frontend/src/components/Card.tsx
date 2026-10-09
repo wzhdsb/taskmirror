@@ -37,6 +37,25 @@ export default function Card({
         {t.owner && (
           <span className="px-1.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 max-w-24 truncate">{t.owner}</span>
         )}
+        {(t.related?.length || t.relatesBack?.length) ? (
+          <span
+            className="px-1 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400"
+            title={`关联: ${[...t.related, ...t.relatesBack].join(", ")}`}
+          >
+            ⧉{t.related.length + t.relatesBack.length}
+          </span>
+        ) : null}
+        {!overlay && t.waiting?.map(w => (
+          <button
+            key={w}
+            title={`前置未完成: ${w} — 点击查看`}
+            onClick={e => { e.stopPropagation(); onOpen?.(w) }}
+            onPointerDown={e => e.stopPropagation()}
+            className="px-1 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 max-w-full truncate hover:bg-amber-500/20 transition-colors"
+          >
+            ⏳{w.slice(9)}
+          </button>
+        ))}
         {t.labels.map(l => (
           <span key={l} className="px-1.5 rounded-full border border-zinc-200 dark:border-zinc-700 max-w-24 truncate">
             {l}

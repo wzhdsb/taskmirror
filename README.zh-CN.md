@@ -21,7 +21,10 @@ Web 与 MCP 是两个独立进程共享同一个库。**Web 服务挂了，agent
 - **变化看得见**——agent 在 CLI 侧的任何动作网页秒感知：新卡滑入高亮、变更卡描边、右上角活动通知（"xx 认领了「yy」"）
 - **网页派发 AI**——待执行卡点"⚡派发"一键放出 AI 执行者（`claude -p` + task-executor agent），认领/日志/交付实时滚入看板；监控页可看 AI 进程并强停（并发 ≤4）
 - **监控 Tab**——执行者负载、停滞卡、各阶段平均停留、实时事件流、规则建议（`GET /api/insights`）
-- **8 个 MCP 工具**——`list_tasks` `get_task` `create_task` `take_task`（原子防抢）`update_task` `set_status` `add_log` `get_insights`
+- **关联与依赖**——卡间 `related`（同源配套）/`depends`（我的前置）单向声明、反查自动算；⧉/⏳ 卡面徽章（⏳ 可点击跳前置）、待执行列被阻塞卡自动沉底、监控页提示被阻塞清单
+- **任务树列**——完成列右侧第五列：有关联边的卡按连通分量聚合成树卡，点开抽屉看 depends 层级树（前置在上、后继缩进）
+- **自闭环防呆**——捞卡自动跳过被未完成前置阻塞的卡（不停下问人）；归档卡仅可重开（点状态 pill/拖回前四列），改正文/owner/关联一律拒绝；网页留空正文=快速卡「## 需求」
+- **9 个 MCP 工具**——`list_tasks` `get_task` `create_task` `take_task`（原子防抢+前置检查）`update_task` `set_status` `add_log` `relate_task` `get_insights`
 - **天生耐久**——WAL + busy_timeout、追加式事件表（进展历史唯一真源）、自动备份（每 50 次写一份、留 20 份）、镜像原子写、JSON 访问日志
 - **人读镜像**——每张卡同时是一份纯 markdown，可读/grep/git；DB 为准，镜像是投影
 - 可选单 token 鉴权（`TASKBOARD_TOKEN`）、Dockerfile 就位

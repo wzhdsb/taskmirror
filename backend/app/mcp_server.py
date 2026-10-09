@@ -49,8 +49,11 @@ if FastMCP is not None:
             rows = rows[: max(1, min(limit, 200))]
             if not rows:
                 return "没有匹配的任务卡。"
-            return "\n".join(f"{t['id']} | {t['status']} | {t['owner'] or '-'} | {t['title']}"
-                             for t in rows)
+            return "\n".join(
+                f"{t['id']} | {t['status']} | {t['owner'] or '-'} | {t['title']}"
+                + (f" | ⏳前置未完成: {','.join(t['waiting'])}" if t.get("waiting") else "")
+                + (f" | ⧉{len(t['related']) + len(t['relatesBack'])}" if t.get("related") or t.get("relatesBack") else "")
+                for t in rows)
         except ApiError as e:
             return f"错误: {e.msg}"
 
@@ -75,11 +78,22 @@ if FastMCP is not None:
 
     @mcp.tool()
     def take_task(owner: str, id: str = "") -> str:
-        """认领任务卡: 原子防抢, 待执行→执行中。id 留空=自动捞最旧的无人待执行卡。"""
+        """认领任务卡: 原子防抢, 待执行→执行中。id 留空=自动捞最旧的无人待执行卡
+        (被未完成 depends 前置阻塞的卡自动跳过; 有 id 但前置未完成会报错, 先推进前置或换卡)。"""
         try:
             d = service.take(owner, id or None)
             t = d["task"]
             return f"已认领 {t['id']} 「{t['title']}」→ 执行中。记得完成后 set_status 到 待验收。"
+        except ApiError as e:
+            return f"错误: {e.msg}"
+
+    @mcp.tool()
+    def relate_task(id: str, target: str, kind: str = "related", remove: bool = False) -> str:
+        """维护卡间关联(单向声明, 反查自动算): related=同源配套, depends=我的前置(先做完它才能做我)。
+        target 可为归档卡; 归档卡不能发起。remove=true 摘除。幂等。"""
+        try:
+            d = service.relate(id, target, kind, remove)
+            return f"已{'摘除' if remove else '关联'} {d['task']['id']} {kind} {target}"
         except ApiError as e:
             return f"错误: {e.msg}"
 

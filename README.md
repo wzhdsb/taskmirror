@@ -21,7 +21,10 @@ Two independent processes share the same DB. **If the web server dies, agents ke
 - **Dispatch AI from the web** — one ⚡ button on a pending card spawns an AI executor (`claude -p` + task-executor agent); claims/logs/deliveries stream onto the board; monitor tab shows live AI processes with kill switch (max 4 concurrent)
 - **Kanban web UI** — dark/light, drag & drop (dnd-kit), right drawer with markdown body editing, labels/priority/due/color, live updates over SSE
 - **Monitor tab** — per-owner load, stalled cards, stage-duration averages, live event stream, rule-based advisor suggestions (`GET /api/insights`)
-- **8 MCP tools** — `list_tasks` `get_task` `create_task` `take_task` (atomic claim) `update_task` `set_status` `add_log` `get_insights`
+- **Relate & depend** — `related` (sibling work) / `depends` (my prerequisite) edges, one-way declared with reverse lookup computed on read; ⧉/⏳ card badges (⏳ jumps to the prerequisite), blocked cards sink in the pending column, blocked-list surfaced in insights
+- **Task-tree column** — a fifth column past Done: cards with edges aggregate into tree cards (connected components); click to open a drawer with the depends hierarchy (prerequisites on top, successors indented)
+- **Autonomy-safe** — card claiming auto-skips cards blocked on unfinished prerequisites (never stops to ask); archived cards are reopen-only (status pill / drag back), body/owner/relate edits rejected; empty body on create = quick `## 需求` card for agents to flesh out
+- **9 MCP tools** — `list_tasks` `get_task` `create_task` `take_task` (atomic claim + prerequisite check) `update_task` `set_status` `add_log` `relate_task` `get_insights`
 - **Durable by construction** — WAL mode + `busy_timeout`, append-only event log (the single source of progress history), auto backups (every 50 writes, keep 20), atomic mirror writes, JSON access logs
 - **Human-readable mirror** — every card is also a plain markdown file you can read/grep/git; DB is truth, mirrors are projections
 - Optional single-token auth (`TASKBOARD_TOKEN`), Dockerfile included

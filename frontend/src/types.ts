@@ -16,6 +16,12 @@ export interface Task {
   position: number
   created: string
   updated: string
+  /** 关联依赖(单向声明), 后五个字段由服务端反查现算 */
+  related: string[]
+  depends: string[]
+  relatesBack: string[]
+  dependedBy: string[]
+  waiting: string[]
 }
 
 export interface TaskEvent {
@@ -88,6 +94,10 @@ export function evText(e: TaskEvent): string {
     case "due": return `截止 → ${d.to || "无"}`
     case "color": return `颜色 → ${d.to || "无"}`
     case "log": return String(d.text || "")
+    case "relate": {
+      const arrow = d.removed ? "−" : "→"
+      return `关联 ${d.kind} ${arrow} ${d.target}`
+    }
     case "restore": return `恢复到待执行`
     case "imported": return `从旧系统导入`
     case "dispatched": return `⚡ 派发 AI 进程 ${d.pid}`

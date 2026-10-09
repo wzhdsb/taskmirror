@@ -2,12 +2,14 @@ import { useEffect, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { api } from "../api"
-import { COLORS, PRIORITIES, STATUSES, STATUS_BAR, evText, type Detail } from "../types"
+import { COLORS, PRIORITIES, STATUSES, STATUS_BAR, STATUS_DOT, evText, type Detail, type Task } from "../types"
 
 export default function CardDrawer({
   id,
   rev,
   owner,
+  all,
+  onOpen,
   onClose,
   onChanged,
   toast,
@@ -15,6 +17,8 @@ export default function CardDrawer({
   id: string
   rev: number
   owner: string
+  all: Task[]
+  onOpen: (id: string) => void
   onClose: () => void
   onChanged: () => void
   toast: (m: string) => void
@@ -27,6 +31,8 @@ export default function CardDrawer({
   const [labelsEdit, setLabelsEdit] = useState(false)
   const [labelsDraft, setLabelsDraft] = useState("")
   const [logText, setLogText] = useState("")
+  const [relTarget, setRelTarget] = useState("")
+  const [relKind, setRelKind] = useState("related")
 
   useEffect(() => {
     setD(null)
@@ -91,6 +97,11 @@ export default function CardDrawer({
             <button onClick={onClose} title="关闭 (Esc)" className="ml-auto h-6 w-6 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400">
               ✕
             </button>
+            {t.status === "完成" && (
+              <span title="已归档: 点状态 pill 或拖回前四列即可重开" className="ml-1 h-6 px-2 inline-flex items-center rounded-full bg-zinc-100 dark:bg-zinc-800 text-[11px] text-zinc-500 shrink-0">
+                已归档
+              </span>
+            )}
           </div>
           {titleEdit ? (
             <input
@@ -194,6 +205,76 @@ export default function CardDrawer({
                 <span className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">+ 标签</span>
               )}
             </button>
+          )}
+        </div>
+
+        {/* 关联区: 单向声明的边 own 行可移除, 反查边只展示 */}
+        <div className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+          <div className="text-xs font-medium text-zinc-400 mb-1.5">关联</div>
+          <ul className="space-y-1">
+            {[
+              ...(t.related ?? []).map(x => ({ id: x, icon: "⧉", note: "配套", own: true, kind: "related" })),
+              ...(t.depends ?? []).map(x => ({ id: x, icon: "⏳", note: "前置", own: true, kind: "depends" })),
+              ...(t.relatesBack ?? []).map(x => ({ id: x, icon: "◂", note: "被配套", own: false, kind: "related" })),
+              ...(t.dependedBy ?? []).map(x => ({ id: x, icon: "▾", note: "后继", own: false, kind: "depends" })),
+            ].map(r => {
+              const m = all.find(x => x.id === r.id)
+              return (
+                <li key={`${r.kind}-${r.id}`} className="flex items-center gap-2 text-xs">
+                  <span>{r.icon}</span>
+                  <span className={`size-1.5 rounded-full shrink-0 ${m ? STATUS_DOT[m.status] : "bg-zinc-300"}`} />
+                  <button
+                    onClick={() => onOpen(r.id)}
+                    className="flex-1 text-left truncate text-blue-600 dark:text-blue-400 hover:underline"
+                    title={`${r.id}${r.own ? "" : " (对方声明)"}`}
+                  >
+                    {m?.title ?? r.id}
+                  </button>
+                  <span className="text-zinc-400 shrink-0">{r.note}</span>
+                  {r.own && t.status !== "完成" && (
+                    <button
+                      title="移除关联"
+                      onClick={() => save(() => api.relate(id, r.id, r.kind, true))}
+                      className="text-zinc-400 hover:text-red-500 px-1 shrink-0"
+                    >
+                      ×
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+          {t.status !== "完成" && (
+            <div className="mt-1.5 flex gap-1.5">
+              <input
+                list="tm-rel-targets"
+                value={relTarget}
+                onChange={e => setRelTarget(e.target.value)}
+                placeholder="目标卡 id / 标题关键词"
+                className={input + " flex-1"}
+              />
+              <datalist id="tm-rel-targets">
+                {all.filter(x => x.id !== id).map(x => (
+                  <option key={x.id} value={x.id}>{x.title}</option>
+                ))}
+              </datalist>
+              <select className={input} value={relKind} onChange={e => setRelKind(e.target.value)}>
+                <option value="related">配套 ⧉</option>
+                <option value="depends">前置 ⏳</option>
+              </select>
+              <button
+                onClick={() => {
+                  const target = relTarget.trim() || (all.find(x => x.title === relTarget)?.id ?? "")
+                  if (target) {
+                    setRelTarget("")
+                    save(() => api.relate(id, target, relKind))
+                  }
+                }}
+                className="h-7 px-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs shrink-0"
+              >
+                添加
+              </button>
+            </div>
           )}
         </div>
 

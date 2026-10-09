@@ -19,6 +19,8 @@ export const api = {
     req<Detail>("POST", `/api/tasks/${encodeURIComponent(id)}/move`, { status, before_id }),
   log: (id: string, text: string, actor: string) =>
     req<Detail>("POST", `/api/tasks/${encodeURIComponent(id)}/log`, { text, actor }),
+  relate: (id: string, target: string, kind: string, remove = false) =>
+    req<Detail>("POST", `/api/tasks/${encodeURIComponent(id)}/relate`, { target, kind, remove }),
   restore: (id: string) => req<Detail>("POST", `/api/tasks/${encodeURIComponent(id)}/restore`),
   remove: (id: string) => req<{ ok: boolean }>("DELETE", `/api/tasks/${encodeURIComponent(id)}`),
   insights: () => req<Insights>("GET", "/api/insights"),

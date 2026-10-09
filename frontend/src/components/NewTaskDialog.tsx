@@ -61,7 +61,7 @@ export default function NewTaskDialog({
           className={input + " w-full"}
         />
         <textarea
-          placeholder="正文 Markdown…（可四段式：① 任务 / ② 已知事实 / ③ 交付物 / ④ 注意）"
+          placeholder="正文 Markdown…（留空=快速卡「## 需求」，agent 接手时再整理；或直接四段式：① 任务 / ② 已知事实 / ③ 交付物 / ④ 注意）"
           value={body}
           onChange={e => setBody(e.target.value)}
           rows={6}

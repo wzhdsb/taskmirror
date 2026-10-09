@@ -52,10 +52,11 @@ def _norm_labels(labels) -> list[str]:
 
 def _serialize(row: sqlite3.Row) -> dict:
     d = dict(row)
-    try:
-        d["labels"] = json.loads(d.get("labels") or "[]")
-    except ValueError:
-        d["labels"] = []
+    for k in ("labels", "related", "depends"):
+        try:
+            d[k] = json.loads(d.get(k) or "[]")
+        except ValueError:
+            d[k] = []
     return d
 
 
@@ -87,19 +88,38 @@ def _after_write(cid=None, task_events=None):
 
 # ---------- 读 ----------
 
+def _annotate(rows: list[dict]) -> None:
+    """关联反查现算(不落盘): relatesBack/dependedBy/waiting。
+    ponytail: 每请求 O(n²) 全表扫, 卡过千再考虑缓存/触发器。"""
+    by_id = {t["id"]: t for t in rows}
+    for t in rows:
+        t["relatesBack"] = [r["id"] for r in rows if t["id"] in r["related"]]
+        t["dependedBy"] = [r["id"] for r in rows if t["id"] in r["depends"]]
+        t["waiting"] = [d for d in t["depends"]
+                        if d in by_id and by_id[d]["status"] != "完成"]
+
+
 def board() -> dict:
     c = db.conn()
     rows = [_serialize(r) for r in c.execute(
-        "SELECT * FROM tasks WHERE board_id=1 AND status!='完成' ORDER BY position, created")]
-    rows.sort(key=lambda t: (STATUS_ORD.get(t["status"], 9), t["position"]))
-    done = [_serialize(r) for r in c.execute(
-        "SELECT * FROM tasks WHERE board_id=1 AND status='完成' ORDER BY updated DESC LIMIT 50")]
-    return {"tasks": rows, "done": done, "rev": db.get_rev()}
+        "SELECT * FROM tasks WHERE board_id=1 ORDER BY position, created")]
+    _annotate(rows)
+    tasks = [t for t in rows if t["status"] != "完成"]
+    # 待执行列按 waiting 数沉底: 被前置阻塞的卡不挡道
+    tasks.sort(key=lambda t: (STATUS_ORD.get(t["status"], 9),
+                              len(t["waiting"]) if t["status"] == "待执行" else 0,
+                              t["position"]))
+    done = sorted((t for t in rows if t["status"] == "完成"),
+                  key=lambda t: t["updated"], reverse=True)[:50]
+    return {"tasks": tasks, "done": done, "rev": db.get_rev()}
 
 
 def detail(cid: str) -> dict:
     c = db.conn()
     task, evs = _load_for_mirror(c, cid)
+    rows = [_serialize(r) for r in c.execute("SELECT * FROM tasks WHERE board_id=1")]
+    _annotate(rows)  # drawer 关联区要反查边; O(n) 单次, 卡过千再瘦身
+    task = next((r for r in rows if r["id"] == cid), task)
     for e in evs:
         try:
             e["detail"] = json.loads(e.get("detail") or "{}")
@@ -162,6 +182,13 @@ def insights() -> dict:
     overdue = [{"id": t["id"], "title": t["title"], "due": t["due"], "status": t["status"]}
                for t in rows if t["due"] and _due_days(t["due"]) < 0]
     suggestions = []
+    # 被未完成前置阻塞的待执行卡(自闭环捞卡会自动跳过, 这里提示拆卡人)
+    st = {t["id"]: t["status"] for t in rows}
+    blocked = [t for t in rows if t["status"] == "待执行"
+               and [d for d in t["depends"] if st.get(d) not in (None, "完成")]]
+    if blocked:
+        suggestions.append(f"{len(blocked)} 张待执行卡被未完成前置阻塞: "
+                           + ", ".join(t["id"] for t in blocked) + " — 先推进前置或摘除依赖")
     if review_overdue:
         suggestions.append(f"{len(review_overdue)} 张卡待验收滞留超 {REVIEW_HOURS}h, 请验收或打回")
     # AI 失联: executor 持有但进程不在(崩溃/被杀/服务重启丢账), >5min 无动静
@@ -235,7 +262,7 @@ def create(title, body="", labels=None, priority="normal", due=None, color=None,
             c.execute("INSERT INTO tasks(id, board_id, title, status, owner, priority, labels, color, "
                       "due, body, position, created, updated) VALUES(?,1,?,'待执行','',?,?,?,?,?,?,?,?)",
                       (cid, title, priority, json.dumps(labels, ensure_ascii=False), color, due,
-                       (body or "").strip(), pos, ts, ts))
+                       (body or "").strip() or "## 需求", pos, ts, ts))
             _ev(c, cid, "created", {"title": title}, actor)
             db.bump_rev(c)
         loaded = _load_for_mirror(c, cid)
@@ -249,6 +276,9 @@ def patch(cid, actor=None, **f) -> dict:
         c = db.conn()
         with c:
             row = _get(c, cid)
+            if row["status"] == "完成" and (f.get("owner") is not None or f.get("body") is not None
+                                            or f.get("labels") is not None):
+                raise ApiError(400, "已归档, 仅可重开(移回前四态)")
             actor = actor or row["owner"] or "webui"
             sets, evs = {}, []
             if f.get("title") is not None:
@@ -317,6 +347,13 @@ def move(cid, status, before_id=None, actor=None) -> dict:
     return detail(cid)
 
 
+def _blocked(c: sqlite3.Connection, row: sqlite3.Row) -> list[str]:
+    """depends 中活跃且未完成的前置 id(不存在的 id 视为已消化, 不阻塞)。"""
+    deps = json.loads(row["depends"] or "[]")
+    return [d for d in deps if (r := c.execute("SELECT status FROM tasks WHERE id=?", (d,)).fetchone())
+            and r["status"] != "完成"]
+
+
 def take(owner, cid=None, actor=None) -> dict:
     owner = _norm_owner(owner)
     if not owner:
@@ -327,11 +364,20 @@ def take(owner, cid=None, actor=None) -> dict:
         with c:
             if cid:
                 row = _get(c, cid)
+                blocked = _blocked(c, row)
+                if blocked:
+                    raise ApiError(409, f"有未完成前置: {', '.join(blocked)} — 先推进前置或摘除依赖")
             else:
-                row = c.execute("SELECT * FROM tasks WHERE board_id=1 AND status='待执行' AND owner='' "
-                                "ORDER BY created, position LIMIT 1").fetchone()
+                # 自闭环协议: 被前置阻塞的卡自动跳过换下一张, 不停下问人
+                row = None
+                for cand in c.execute(
+                        "SELECT * FROM tasks WHERE board_id=1 AND status='待执行' AND owner='' "
+                        "ORDER BY created, position"):
+                    if not _blocked(c, cand):
+                        row = cand
+                        break
                 if not row:
-                    raise ApiError(404, "没有可认领的待执行卡")
+                    raise ApiError(404, "没有可认领的待执行卡(或全部被未完成前置阻塞)")
             if row["status"] == "完成":
                 raise ApiError(400, "已归档, 不能认领")
             if row["owner"] and row["owner"] != owner:
@@ -349,6 +395,35 @@ def take(owner, cid=None, actor=None) -> dict:
         loaded = _load_for_mirror(c, row["id"])
     _after_write(row["id"], loaded)
     return detail(row["id"])
+
+
+def relate(cid, target, kind="related", remove=False, actor=None) -> dict:
+    """关联维护, 单向声明只写发起方: related=同源配套, depends=我的前置。
+    幂等(重复添加/移除不存在的都不报错); 目标可为归档卡; 归档卡发起一律拒绝。"""
+    if kind not in ("related", "depends"):
+        raise ApiError(400, "kind 需为 related|depends")
+    with _lock:
+        c = db.conn()
+        with c:
+            row = _get(c, cid)
+            if cid == target:
+                raise ApiError(400, "不能关联自己")
+            if not c.execute("SELECT 1 FROM tasks WHERE id=?", (target,)).fetchone():
+                raise ApiError(404, f"目标卡 {target} 不存在")
+            if row["status"] == "完成":
+                raise ApiError(400, "已归档, 仅可重开(移回前四态)")
+            cur = _serialize(row)[kind]
+            new = ([x for x in cur if x != target] if remove
+                   else (cur + [target] if target not in cur else cur))
+            if new != cur:
+                actor = actor or row["owner"] or "webui"
+                c.execute(f"UPDATE tasks SET {kind}=?, updated=? WHERE id=?",
+                          (json.dumps(new, ensure_ascii=False), now(), cid))
+                _ev(c, cid, "relate", {"kind": kind, "target": target, "removed": remove}, actor)
+                db.bump_rev(c)
+        loaded = _load_for_mirror(c, cid)
+    _after_write(cid, loaded)
+    return detail(cid)
 
 
 def add_log(cid, text, actor=None) -> dict:

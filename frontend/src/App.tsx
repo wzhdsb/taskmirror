@@ -213,7 +213,8 @@ export default function App() {
       )}
 
       {openId && (
-        <CardDrawer id={openId} rev={rev} owner={owner} onClose={() => setOpenId(null)} onChanged={refresh} toast={toast} />
+        <CardDrawer id={openId} rev={rev} owner={owner} all={[...board.tasks, ...board.done]}
+          onOpen={setOpenId} onClose={() => setOpenId(null)} onChanged={refresh} toast={toast} />
       )}
       {showNew && <NewTaskDialog onClose={() => setShowNew(false)} onCreated={refresh} toast={toast} />}
       {toastMsg && (

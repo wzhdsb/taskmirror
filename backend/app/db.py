@@ -44,6 +44,11 @@ MIGRATIONS: dict[int, list[str]] = {
             task_id TEXT PRIMARY KEY, pid INTEGER NOT NULL,
             log TEXT NOT NULL, started TEXT NOT NULL)""",
     ],
+    3: [
+        # 卡间关联(单向声明): related=同源配套, depends=我的前置; 反查现算不落盘
+        "ALTER TABLE tasks ADD COLUMN related TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE tasks ADD COLUMN depends TEXT NOT NULL DEFAULT '[]'",
+    ],
 }
 
 _backup_lock = threading.Lock()

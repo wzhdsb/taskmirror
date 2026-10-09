@@ -62,6 +62,8 @@ def _event_line(e: dict) -> str:
         txt = "恢复到待执行"
     elif ev == "imported":
         txt = "从旧系统导入"
+    elif ev == "relate":
+        txt = f"{d.get('kind', '')} {'−' if d.get('removed') else '→'} {d.get('target', '')}"
     elif ev == "deleted":
         txt = "删除卡片"
     else:
@@ -87,6 +89,10 @@ def render(task: dict, events: list[dict], tail: str = "") -> str:
         fm.append(f"due: {task['due']}")
     if task.get("color"):
         fm.append(f"color: {task['color']}")
+    if task.get("related"):
+        fm.append(f"related: {','.join(task['related'])}")
+    if task.get("depends"):
+        fm.append(f"depends: {','.join(task['depends'])}")
     fm.append("---")
     lines = fm + ["", _NOTICE, "", f"# {task['title']}", ""]
     body = (task.get("body") or "").strip()
@@ -131,10 +137,11 @@ def full_sync():
     keep = {"active": set(), "done": set()}
     for row in rows:
         t = dict(row)
-        try:
-            t["labels"] = json.loads(t.get("labels") or "[]")
-        except ValueError:
-            t["labels"] = []
+        for k in ("labels", "related", "depends"):
+            try:
+                t[k] = json.loads(t.get(k) or "[]")
+            except ValueError:
+                t[k] = []
         evs = [dict(e) for e in c.execute(
             "SELECT ts, actor, event, detail FROM task_events WHERE task_id=? ORDER BY id",
             (t["id"],))]

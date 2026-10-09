@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 
 from . import config, db, mirror, service
-from .models import LogReq, MoveReq, TaskCreate, TaskPatch
+from .models import LogReq, MoveReq, RelateReq, TaskCreate, TaskPatch
 from .service import ApiError
 
 SSE_POLL = 1.0
@@ -97,6 +97,10 @@ def create_app() -> FastAPI:
     @app.post("/api/tasks/{cid}/log")
     async def log_task(cid: str, req: LogReq):
         return service.add_log(cid, req.text, req.actor)
+
+    @app.post("/api/tasks/{cid}/relate")
+    async def relate_task(cid: str, req: RelateReq):
+        return service.relate(cid, req.target, req.kind, req.remove)
 
     @app.post("/api/tasks/{cid}/restore")
     async def restore_task(cid: str):

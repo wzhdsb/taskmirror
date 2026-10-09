@@ -30,3 +30,9 @@ class MoveReq(BaseModel):
 class LogReq(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     actor: str = "webui"
+
+
+class RelateReq(BaseModel):
+    target: str = Field(min_length=1, max_length=100)  # 目标卡 id, 可为归档卡
+    kind: str = "related"  # related=同源配套 | depends=我的前置
+    remove: bool = False
