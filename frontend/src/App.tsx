@@ -10,11 +10,12 @@ interface Filter {
   q: string
   owner: string
   label: string
+  project: string
 }
 
 export default function App() {
   const [board, setBoard] = useState<BoardData>({ tasks: [], done: [], rev: 0 })
-  const [filter, setFilter] = useState<Filter>({ q: "", owner: "", label: "" })
+  const [filter, setFilter] = useState<Filter>({ q: "", owner: "", label: "", project: "" })
   const [openId, setOpenId] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [tab, setTab] = useState<"board" | "monitor">("board")
@@ -106,22 +107,24 @@ export default function App() {
     return (t: Task) =>
       (!q || `${t.title} ${t.id} ${t.owner} ${t.labels.join(" ")}`.toLowerCase().includes(q)) &&
       (!filter.owner || t.owner === filter.owner) &&
-      (!filter.label || t.labels.includes(filter.label))
+      (!filter.label || t.labels.includes(filter.label)) &&
+      (!filter.project || t.project === filter.project)
   }, [filter])
 
   const tasks = board.tasks.filter(vis)
   const done = board.done.filter(vis)
   const owners = [...new Set(board.tasks.map(t => t.owner).filter(Boolean))]
   const labels = [...new Set(board.tasks.flatMap(t => t.labels))]
+  const projects = [...new Set([...board.tasks, ...board.done].map(t => t.project).filter(Boolean))]
 
-  // 乐观移动, 失败回滚(重拉)
-  const onMove = useCallback((id: string, status: string, beforeId: string | null) => {
+  // 乐观移动, 失败回滚(重拉); project 非空=跨泳道拖拽, move 后补 patch 换项目
+  const onMove = useCallback((id: string, status: string, beforeId: string | null, project?: string) => {
     setBoard(b => {
       const all = [...b.tasks]
       const i = all.findIndex(t => t.id === id)
       if (i < 0) return b
       const [t] = all.splice(i, 1)
-      const nt = { ...t, status: status as Task["status"] }
+      const nt = { ...t, status: status as Task["status"], ...(project !== undefined ? { project } : {}) }
       const j = beforeId ? all.findIndex(x => x.id === beforeId) : -1
       if (j >= 0) all.splice(j, 0, nt)
       else {
@@ -136,10 +139,12 @@ export default function App() {
       }
       return { ...b, tasks: all }
     })
-    api.move(id, status, beforeId).catch(e => {
-      toast(e.message)
-      refresh()
-    })
+    api.move(id, status, beforeId)
+      .then(() => project !== undefined ? api.patch(id, { project }) : undefined)
+      .catch(e => {
+        toast(e.message)
+        refresh()
+      })
   }, [toast, refresh])
 
   const onDispatch = useCallback((id: string) => {
@@ -181,6 +186,12 @@ export default function App() {
           onChange={e => setFilter(f => ({ ...f, q: e.target.value }))}
           className="w-60 h-7 px-2.5 rounded-md bg-zinc-100 dark:bg-zinc-800 border border-transparent focus:border-blue-500 outline-none placeholder:text-zinc-500 dark:placeholder:text-zinc-400"
         />
+        {projects.length > 0 && (
+          <select className={sel} value={filter.project} onChange={e => setFilter(f => ({ ...f, project: e.target.value }))}>
+            <option value="">全部项目</option>
+            {projects.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        )}
         {owners.length > 0 && (
           <select className={sel} value={filter.owner} onChange={e => setFilter(f => ({ ...f, owner: e.target.value }))}>
             <option value="">全部执行者</option>
@@ -213,7 +224,8 @@ export default function App() {
 
       {tab === "board" ? (
         <Board tasks={tasks} done={done} onOpen={setOpenId} onMove={onMove} onNew={() => setShowNew(true)}
-          flash={flash} onDispatch={onDispatch} onReview={onReview} />
+          flash={flash} onDispatch={onDispatch} onReview={onReview}
+          onIsolate={p => setFilter(f => ({ ...f, project: p }))} />
       ) : (
         <Monitor rev={rev} onOpen={setOpenId} />
       )}

@@ -68,11 +68,11 @@ if FastMCP is not None:
 
     @mcp.tool()
     def create_task(title: str, body: str = "", labels: str = "", priority: str = "normal",
-                    due: str = "") -> str:
-        """建卡。labels 逗号分隔; priority: low/normal/high/urgent; due: YYYY-MM-DD。返回新卡 id。"""
+                    due: str = "", project: str = "") -> str:
+        """建卡。labels 逗号分隔; project: 所属项目(泳道分组, 如 taskmirror); due: YYYY-MM-DD。返回新卡 id。"""
         try:
             d = service.create(title, body, labels.split(",") if labels else [],
-                               priority, due or None)
+                               priority, due or None, project=project)
             return f"已建卡: {d['task']['id']} (待执行)"
         except ApiError as e:
             return f"错误: {e.msg}"
@@ -101,7 +101,7 @@ if FastMCP is not None:
 
     @mcp.tool()
     def update_task(id: str, title: str = "", body: str = "", owner: str = "",
-                    labels: str = "", priority: str = "", due: str = "") -> str:
+                    labels: str = "", priority: str = "", due: str = "", project: str = "") -> str:
         """更新任务卡字段。留空=不改(labels 逗号分隔)。注意: 无法用本工具清空字段, 清空走 web。"""
         try:
             kw = {}
@@ -117,6 +117,8 @@ if FastMCP is not None:
                 kw["priority"] = priority
             if due:
                 kw["due"] = due
+            if project:
+                kw["project"] = project
             if not kw:
                 return "没有要更新的字段。"
             service.patch(id, **kw)

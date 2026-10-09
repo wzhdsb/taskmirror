@@ -7,9 +7,11 @@ class TaskCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     body: str = ""
     labels: list[str] = []
-    priority: str = "normal"
+    priority: str = "normal"  # 已退役: 兼容旧调用方, 后端不再区分
     due: str | None = None  # YYYY-MM-DD
     color: str | None = None
+    project: str = ""  # 泳道分组
+    starred: bool = False  # 星标=下一批要做的
 
 
 class TaskPatch(BaseModel):
@@ -17,9 +19,11 @@ class TaskPatch(BaseModel):
     owner: str | None = None
     body: str | None = None
     labels: list[str] | None = None
-    priority: str | None = None
+    priority: str | None = None  # 已退役, 仍接受旧参数
     due: str | None = None
     color: str | None = None
+    project: str | None = None
+    starred: bool | None = None
 
 
 class MoveReq(BaseModel):

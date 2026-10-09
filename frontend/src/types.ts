@@ -1,14 +1,18 @@
 export type Status = "待执行" | "执行中" | "待验收" | "完成"
 export const STATUSES: Status[] = ["待执行", "执行中", "待验收", "完成"]
 export const STATUS_ORD: Record<Status, number> = { 待执行: 0, 执行中: 1, 待验收: 2, 完成: 3 }
-export const PRIORITIES = ["low", "normal", "high", "urgent"] as const
 
 export interface Task {
   id: string
   title: string
   status: Status
   owner: string
+  /** 已退役, 后端恒 normal, 仅兼容旧数据 */
   priority: string
+  /** 所属项目(泳道分组), 空=未分组 */
+  project: string
+  /** 星标=下一批要做的, 列内置顶 */
+  starred: number
   labels: string[]
   color: string | null
   due: string | null
@@ -95,7 +99,9 @@ export function evText(e: TaskEvent): string {
     case "title": return `标题改为「${d.to}」`
     case "body": return `更新正文`
     case "labels": return `标签 → ${(d.to as string[] || []).join(",")}`
-    case "priority": return `优先级 → ${d.to}`
+    case "priority": return `优先级 → ${d.to}`  // 已退役, 渲染历史事件用
+    case "project": return `项目 → ${d.to || "未分组"}`
+    case "starred": return d.to ? "★ 星标" : "取消星标"
     case "due": return `截止 → ${d.to || "无"}`
     case "color": return `颜色 → ${d.to || "无"}`
     case "log": return String(d.text || "")

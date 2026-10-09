@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
 import { api } from "../api"
-import { PRIORITIES } from "../types"
 
 export default function NewTaskDialog({
   onClose,
@@ -14,7 +13,7 @@ export default function NewTaskDialog({
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [labels, setLabels] = useState("")
-  const [priority, setPriority] = useState<string>("normal")
+  const [project, setProject] = useState("")
   const [due, setDue] = useState("")
   const [busy, setBusy] = useState(false)
 
@@ -34,7 +33,7 @@ export default function NewTaskDialog({
         title,
         body,
         labels: labels.split(",").map(s => s.trim()).filter(Boolean),
-        priority,
+        project: project.trim(),
         due: due || "",
       })
       onCreated()
@@ -69,13 +68,7 @@ export default function NewTaskDialog({
         />
         <div className="flex gap-2 mt-2.5">
           <input placeholder="标签,逗号分隔" value={labels} onChange={e => setLabels(e.target.value)} className={input + " flex-1"} />
-          <select value={priority} onChange={e => setPriority(e.target.value)} className={input}>
-            {PRIORITIES.map(p => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+          <input placeholder="项目(泳道,可空)" value={project} onChange={e => setProject(e.target.value)} className={input + " w-32"} />
           <input type="date" value={due} onChange={e => setDue(e.target.value)} className={input} />
         </div>
         <div className="flex justify-end gap-2 mt-4">

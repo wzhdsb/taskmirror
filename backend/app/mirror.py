@@ -54,6 +54,10 @@ def _event_line(e: dict) -> str:
         txt = f"优先级 → {d.get('to', '')}"
     elif ev == "due":
         txt = f"截止 → {d.get('to') or '无'}"
+    elif ev == "project":
+        txt = f"项目 → {d.get('to') or '未分组'}"
+    elif ev == "starred":
+        txt = "★ 星标" if d.get("to") else "取消星标"
     elif ev == "color":
         txt = f"颜色 → {d.get('to') or '默认'}"
     elif ev == "log":
@@ -82,8 +86,10 @@ def render(task: dict, events: list[dict], tail: str = "") -> str:
         f"created: {task['created']}",
         f"updated: {task['updated']}",
     ]
-    if task.get("priority") and task["priority"] != "normal":
-        fm.append(f"priority: {task['priority']}")
+    if task.get("project"):
+        fm.append(f"project: {task['project']}")
+    if task.get("starred"):
+        fm.append("starred: true")
     if task.get("labels"):
         fm.append(f"labels: {json.dumps(task['labels'], ensure_ascii=False)}")
     if task.get("due"):
