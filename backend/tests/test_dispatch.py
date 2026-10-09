@@ -133,3 +133,21 @@ def test_activity_parse(home):
     assert acts[-1]["kind"] == "done" and "待验收" in acts[-1]["text"]
     # system/hook 行被过滤
     assert len(acts) == 3
+
+
+def test_activity_raw_and_recent(home):
+    """raw=True 回原文尾行(每行截 400); recent_dispatches 列已结束日志且跳过运行中。"""
+    logs = service.config.home() / "logs"
+    logs.mkdir(parents=True)
+    (logs / f"dispatch-{'x' * 20}-100.jsonl").write_text(
+        '{"type":"assistant"}\n' + "z" * 500 + "\n", encoding="utf-8")
+    service.DISPATCHES.clear()
+    r = service.activity("x" * 20, raw=True)
+    assert r["raw"][0] == '{"type":"assistant"}' and len(r["raw"][1]) == 400  # 长行截断
+    assert service.activity("x" * 20)["activities"] == []  # 非 json 行不产生摘要
+    rec = service.recent_dispatches()
+    assert rec and rec[0]["task_id"] == "x" * 20 and rec[0]["ended"]
+    service.DISPATCHES["x" * 20] = {"pid": 1, "started": "", "proc": None, "log_fh": None,
+                                    "log": str(logs / f"dispatch-{'x' * 20}-100.jsonl")}
+    assert service.recent_dispatches() == []  # 运行中的不重复列
+    service.DISPATCHES.clear()

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { api } from "../api"
 import { evText, safeParse, STATUSES, STATUS_DOT, type InsightTask, type Insights, type RecentEvent, type TaskEvent } from "../types"
 
@@ -12,24 +12,29 @@ export default function Monitor({ rev, onOpen }: { rev: number; onOpen: (id: str
   const [disp, setDisp] = useState<{ task_id: string; pid: number; started: string; agent: string }[]>([])
   const [openAct, setOpenAct] = useState<string | null>(null) // 展开过程流的卡
   const [acts, setActs] = useState<{ kind: string; text: string; ts: string }[]>([])
+  const [rawMode, setRawMode] = useState(false) // 摘要 ↔ 进程真实 stdout 原文
+  const [raw, setRaw] = useState<string[]>([])
+  const [rec, setRec] = useState<{ task_id: string; ended: string }[]>([])
 
   useEffect(() => {
     api.insights().then(setIns).catch(() => {})
     api.recent(100).then(r => setEvs(r.events)).catch(() => {})
     api.dispatches().then(r => setDisp(r.running)).catch(() => {})
+    api.recentDispatches().then(r => setRec(r.recent)).catch(() => {})
   }, [rev])
 
-  // 展开某卡时 2s 轮询它的 AI 过程流(stream-json 摘要), 折叠即停
+  // 展开某卡时 2s 轮询它的 AI 过程流(摘要或原文), 折叠即停
   useEffect(() => {
     if (!openAct) return
     let stop = false
-    const tick = () => api.activity(openAct)
-      .then(r => { if (!stop) setActs(r.activities) })
-      .catch(() => {})
+    const tick = () => (rawMode
+      ? api.activityRaw(openAct).then(r => { if (!stop) setRaw(r.raw) })
+      : api.activity(openAct).then(r => { if (!stop) setActs(r.activities) })
+    ).catch(() => {})
     tick()
     const iv = setInterval(tick, 2000)
     return () => { stop = true; clearInterval(iv) }
-  }, [openAct])
+  }, [openAct, rawMode])
 
   const counts = ins?.counts || {}
   return (
@@ -90,9 +95,22 @@ export default function Monitor({ rev, onOpen }: { rev: number; onOpen: (id: str
       {/* 运行中的 AI + 执行者负载 */}
       <div className="flex flex-col gap-4 shrink-0">
         <div className={CARD}>
-          <div className={H2}>运行中的 AI · {disp.length}</div>
-          {disp.length > 0 ? (
-            <ul className="p-2 space-y-1">
+          <div className={H2}>
+            运行中的 AI · {disp.length}
+            <span className="ml-auto flex rounded text-[10px] border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+              <button onClick={() => setRawMode(false)}
+                className={`px-1.5 h-5 ${!rawMode ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200" : "text-zinc-400"}`}>
+                摘要
+              </button>
+              <button onClick={() => setRawMode(true)}
+                className={`px-1.5 h-5 ${rawMode ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200" : "text-zinc-400"}`}
+                title="进程真实 stdout(stream-json 原文, 黑底终端样式)">
+                原文
+              </button>
+            </span>
+          </div>
+          {disp.length > 0 && (
+            <ul className="p-2 pb-0 space-y-1">
               {disp.map(d => (
                 <li key={d.task_id}>
                   <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
@@ -113,12 +131,32 @@ export default function Monitor({ rev, onOpen }: { rev: number; onOpen: (id: str
                     </button>
                   </div>
                   {openAct === d.task_id && (
-                    <ActivityStream acts={acts} />
+                    rawMode ? <Terminal lines={raw} /> : <ActivityStream acts={acts} />
                   )}
                 </li>
               ))}
             </ul>
-          ) : (
+          )}
+          {rec.length > 0 && (
+            <ul className="p-2 pt-1 space-y-0.5 border-t border-zinc-100 dark:border-zinc-800/60 mt-1">
+              <li className="text-[10px] text-zinc-400 px-1 pb-0.5">最近进程</li>
+              {rec.slice(0, 4).map(d => (
+                <li key={d.task_id + d.ended}>
+                  <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    <span className="tabular-nums shrink-0">{d.ended}</span>
+                    <button onClick={() => setOpenAct(openAct === d.task_id ? null : d.task_id)}
+                      className="truncate hover:underline flex-1 text-left" title="回看该进程过程流">
+                      {d.task_id.slice(9)} {openAct === d.task_id ? "▾" : "▸"}
+                    </button>
+                  </div>
+                  {openAct === d.task_id && (
+                    rawMode ? <Terminal lines={raw} /> : <ActivityStream acts={acts} />
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!disp.length && !rec.length && (
             <div className="px-3 py-4 text-xs text-zinc-500 dark:text-zinc-400">
               当前无 AI 进程——卡面 <span className="text-blue-600 dark:text-blue-400">⚡派发</span> 执行 /{" "}
               <span className="text-emerald-600 dark:text-emerald-400">✔验收</span> 核验，过程流在此实时可看
@@ -151,6 +189,19 @@ export default function Monitor({ rev, onOpen }: { rev: number; onOpen: (id: str
           </ul>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** 终端原文视图: 进程真实 stdout(stream-json 尾行), 黑底等宽, 自动滚底 */
+function Terminal({ lines }: { lines: string[] }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight })
+  if (!lines.length)
+    return <div className="ml-5 py-1 text-[11px] text-zinc-400">尚无输出…</div>
+  return (
+    <div ref={ref} className="ml-5 my-1 p-2 rounded-md bg-zinc-950 border border-zinc-800 text-zinc-300 font-mono text-[11px] leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap break-all select-text">
+      {lines.join("\n")}
     </div>
   )
 }

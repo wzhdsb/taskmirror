@@ -710,6 +710,22 @@ def stop_dispatch(cid: str, actor: str = "webui") -> dict:
     return {"ok": True}
 
 
+def recent_dispatches(limit: int = 5) -> list[dict]:
+    """最近已结束的派发日志(监控页回看用); 正在跑的不重复列。"""
+    p = config.home() / "logs"
+    hits = sorted((x for x in p.glob("dispatch-*.jsonl") if p.exists()),
+                  key=os.path.getmtime, reverse=True) if p.exists() else []
+    out = []
+    for h in hits:
+        cid = h.name[len("dispatch-"):].rsplit("-", 1)[0]
+        if cid in DISPATCHES:
+            continue
+        out.append({"task_id": cid, "ended": time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(h)))})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def running() -> list[dict]:
     _reap()
     out = []
@@ -753,8 +769,9 @@ def _parse_activity(lines: list[str]) -> list[dict]:
     return out[-30:]
 
 
-def activity(cid: str) -> dict:
-    """运行中取 DISPATCHES 的 log; 已结束取最近一次日志(过程可回看)。"""
+def activity(cid: str, raw: bool = False) -> dict:
+    """运行中取 DISPATCHES 的 log; 已结束取最近一次日志(过程可回看)。
+    raw=True 回进程真实 stdout 尾行(每行截 400 字, 终端原文视图); 默认解析成人读摘要。"""
     d = DISPATCHES.get(cid)
     if d:
         log = d["log"]
@@ -763,7 +780,9 @@ def activity(cid: str) -> dict:
         hits = sorted(p.glob(f"dispatch-{cid}-*.jsonl")) if p.exists() else []
         log = str(hits[-1]) if hits else None
     if not log or not os.path.isfile(log):
-        return {"activities": [], "running": bool(d)}
+        return {"activities": [], "raw": [], "running": bool(d)}
     with open(log, encoding="utf-8", errors="replace") as f:
         lines = f.readlines()[-400:]
+    if raw:
+        return {"raw": [ln.rstrip()[:400] for ln in lines[-200:]], "running": bool(d)}
     return {"activities": _parse_activity(lines), "running": bool(d)}
