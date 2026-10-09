@@ -18,6 +18,7 @@ export default function App() {
   const [filter, setFilter] = useState<Filter>({ q: "", owner: "", label: "", project: "" })
   const [openId, setOpenId] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
+  const [newPreset, setNewPreset] = useState<{ project: string; status: string } | null>(null)
   const [tab, setTab] = useState<"board" | "monitor">("board")
   const [toastMsg, setToastMsg] = useState("")
   const [dark, setDark] = useState(() => localStorage.getItem("tm_theme") !== "light")
@@ -214,7 +215,10 @@ export default function App() {
             {dark ? "☀️" : "🌙"}
           </button>
           <button
-            onClick={() => setShowNew(true)}
+            onClick={() => {
+              setNewPreset(null)
+              setShowNew(true)
+            }}
             className="h-7 px-3 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium"
           >
             + 新建任务
@@ -223,7 +227,9 @@ export default function App() {
       </header>
 
       {tab === "board" ? (
-        <Board tasks={tasks} done={done} onOpen={setOpenId} onMove={onMove} onNew={() => setShowNew(true)}
+        <Board tasks={tasks} done={done} onOpen={setOpenId} onMove={onMove}
+          onNew={() => { setNewPreset(null); setShowNew(true) }}
+          onCreate={(project, status) => { setNewPreset({ project, status }); setShowNew(true) }}
           flash={flash} onDispatch={onDispatch} onReview={onReview} />
       ) : (
         <Monitor rev={rev} onOpen={setOpenId} />
@@ -233,7 +239,7 @@ export default function App() {
         <CardDrawer id={openId} rev={rev} owner={owner} all={[...board.tasks, ...board.done]}
           onOpen={setOpenId} onClose={() => setOpenId(null)} onChanged={refresh} toast={toast} />
       )}
-      {showNew && <NewTaskDialog onClose={() => setShowNew(false)} onCreated={refresh} toast={toast} />}
+      {showNew && <NewTaskDialog onClose={() => setShowNew(false)} onCreated={refresh} toast={toast} preset={newPreset} />}
       {toastMsg && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] px-3.5 h-8 flex items-center rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs shadow-lg">
           {toastMsg}

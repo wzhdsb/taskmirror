@@ -5,15 +5,17 @@ export default function NewTaskDialog({
   onClose,
   onCreated,
   toast,
+  preset,
 }: {
   onClose: () => void
   onCreated: () => void
   toast: (m: string) => void
+  preset?: { project: string; status: string } | null // 点格子空白处带入: 泳道项目+目标列
 }) {
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [labels, setLabels] = useState("")
-  const [project, setProject] = useState("")
+  const [project, setProject] = useState(preset?.project ?? "")
   const [due, setDue] = useState("")
   const [busy, setBusy] = useState(false)
 
@@ -29,13 +31,14 @@ export default function NewTaskDialog({
     if (!title.trim() || busy) return
     setBusy(true)
     try {
-      await api.create({
+      const r = await api.create({
         title,
         body,
         labels: labels.split(",").map(s => s.trim()).filter(Boolean),
         project: project.trim(),
         due: due || "",
       })
+      if (preset?.status && preset.status !== "待执行") await api.move(r.task.id, preset.status, null)
       onCreated()
       onClose()
     } catch (e) {
@@ -50,7 +53,14 @@ export default function NewTaskDialog({
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-[34rem] max-w-[92vw] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl p-4 dialog-in">
-        <h3 className="font-semibold mb-3">新建任务</h3>
+        <h3 className="font-semibold mb-3">
+          新建任务
+          {preset && (
+            <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-normal">
+              {preset.project || "未分组"} · {preset.status}
+            </span>
+          )}
+        </h3>
         <input
           autoFocus
           placeholder="标题（回车直接创建）"

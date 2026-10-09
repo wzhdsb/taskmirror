@@ -23,6 +23,7 @@ export default function Board({
   onOpen,
   onMove,
   onNew,
+  onCreate,
   flash,
   onDispatch,
   onReview,
@@ -32,6 +33,7 @@ export default function Board({
   onOpen: (id: string) => void
   onMove: (id: string, status: string, beforeId: string | null, project?: string) => void
   onNew: () => void
+  onCreate: (project: string, status: string) => void
   flash: Record<string, "new" | "upd">
   onDispatch: (id: string) => void
   onReview: (id: string) => void
@@ -171,8 +173,8 @@ export default function Board({
                     <span className="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums">{total}</span>
                     {stars > 0 && <span className="text-xs text-amber-500">★{stars}</span>}
                     {fold && (
-                      <span className="text-[11px] text-zinc-400 truncate">
-                        {STATUSES.map((s, i) => `${s.slice(0, 1)}${cells[i].length}`).join(" · ")}
+                      <span className="text-xs text-zinc-400 truncate">
+                        {STATUSES.map((s, i) => `${s} ${cells[i].length}`).join(" · ")}
                       </span>
                     )}
                   </header>
@@ -187,6 +189,7 @@ export default function Board({
                           flash={flash}
                           onDispatch={onDispatch}
                           onReview={onReview}
+                          onCreate={onCreate}
                         />
                       ))}
                     </div>
@@ -203,7 +206,7 @@ export default function Board({
   )
 }
 
-/** 泳道格: 淡色块当列底, 独立 droppable(id=project|status), 星标置顶; 超约5张格内滚动(滑动条控剩余) */
+/** 泳道格: 淡色块当列底, 独立 droppable(id=project|status), 星标置顶; 超约5张格内滚动; 点空白处=在该项目该列新建 */
 function Cell({
   droppableId,
   tasks,
@@ -211,6 +214,7 @@ function Cell({
   flash,
   onDispatch,
   onReview,
+  onCreate,
 }: {
   droppableId: string
   tasks: Task[]
@@ -218,12 +222,16 @@ function Cell({
   flash: Record<string, "new" | "upd">
   onDispatch: (id: string) => void
   onReview: (id: string) => void
+  onCreate: (project: string, status: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: droppableId })
   const sorted = [...tasks].sort((a, b) => (b.starred || 0) - (a.starred || 0))
   return (
     <div
       ref={setNodeRef}
+      onClick={e => {
+        if (e.target === e.currentTarget) onCreate(droppableId.slice(0, droppableId.indexOf("|")), droppableId.slice(droppableId.indexOf("|") + 1))
+      }}
       className={`flex flex-col gap-1.5 min-h-20 max-h-[21rem] overflow-y-auto p-1.5 rounded-md transition-colors [scrollbar-width:thin] ${
         isOver ? "bg-blue-500/10 ring-1 ring-blue-500/50" : "bg-zinc-100/70 dark:bg-zinc-900/40"
       }`}
