@@ -46,8 +46,9 @@ def test_dispatch_flow(home, monkeypatch):
 
         # 同卡重复派发 → 409
         assert c.post(f"/api/tasks/{tid}/dispatch").status_code == 409
-        # 列表可见
-        assert c.get("/api/dispatches").json()["running"][0]["task_id"] == tid
+        # 列表可见, agent 从最近事件派生(派发=executor / 验收=acceptor)
+        row = c.get("/api/dispatches").json()["running"][0]
+        assert row["task_id"] == tid and row["agent"] == "executor"
 
         # 假进程退出 → 任意请求触发 reap → 列表空, stop 404, 可再派
         procs[0].rc = 0

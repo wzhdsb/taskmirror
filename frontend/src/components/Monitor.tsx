@@ -9,7 +9,7 @@ const H2 = "px-3 h-9 flex items-center font-medium text-xs text-zinc-500 dark:te
 export default function Monitor({ rev, onOpen }: { rev: number; onOpen: (id: string) => void }) {
   const [ins, setIns] = useState<Insights | null>(null)
   const [evs, setEvs] = useState<RecentEvent[]>([])
-  const [disp, setDisp] = useState<{ task_id: string; pid: number; started: string }[]>([])
+  const [disp, setDisp] = useState<{ task_id: string; pid: number; started: string; agent: string }[]>([])
   const [openAct, setOpenAct] = useState<string | null>(null) // 展开过程流的卡
   const [acts, setActs] = useState<{ kind: string; text: string; ts: string }[]>([])
 
@@ -87,55 +87,69 @@ export default function Monitor({ rev, onOpen }: { rev: number; onOpen: (id: str
         </div>
       </div>
 
-      {/* 执行者负载 */}
-      <div className={`${CARD} h-fit shrink-0`}>
-        <div className={H2}>执行者负载</div>
-        {disp.length > 0 && (
-          <ul className="px-3 pt-2 space-y-1">
-            {disp.map(d => (
-              <li key={d.task_id}>
-                <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
-                  <span className="animate-pulse">⟳</span>
-                  <button onClick={() => setOpenAct(openAct === d.task_id ? null : d.task_id)}
-                    className="truncate hover:underline flex-1 text-left" title="点开看 AI 正在做什么">
-                    AI 执行中 · {d.task_id} {openAct === d.task_id ? "▾" : "▸"}
-                  </button>
-                  <button
-                    onClick={() => api.stopDispatch(d.task_id).catch(() => {})}
-                    className="shrink-0 h-5 px-1.5 rounded text-red-500 hover:bg-red-500/10"
-                    title="强停该 AI 进程"
-                  >
-                    停止
-                  </button>
-                </div>
-                {openAct === d.task_id && (
-                  <ActivityStream acts={acts} />
-                )}
-              </li>
-            ))}
+      {/* 运行中的 AI + 执行者负载 */}
+      <div className="flex flex-col gap-4 shrink-0">
+        <div className={CARD}>
+          <div className={H2}>运行中的 AI · {disp.length}</div>
+          {disp.length > 0 ? (
+            <ul className="p-2 space-y-1">
+              {disp.map(d => (
+                <li key={d.task_id}>
+                  <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                    <span className="animate-pulse" title={`pid ${d.pid} · ${d.started}`}>⟳</span>
+                    <span className="shrink-0" title={d.agent === "acceptor" ? "验收 agent" : "执行 agent"}>
+                      {d.agent === "acceptor" ? "✔" : "⚡"}
+                    </span>
+                    <button onClick={() => setOpenAct(openAct === d.task_id ? null : d.task_id)}
+                      className="truncate hover:underline flex-1 text-left" title="点开看 AI 正在做什么">
+                      {d.agent === "acceptor" ? "验收中" : "执行中"} · {d.task_id} {openAct === d.task_id ? "▾" : "▸"}
+                    </button>
+                    <button
+                      onClick={() => api.stopDispatch(d.task_id).catch(() => {})}
+                      className="shrink-0 h-5 px-1.5 rounded text-red-500 hover:bg-red-500/10"
+                      title="强停该 AI 进程"
+                    >
+                      停止
+                    </button>
+                  </div>
+                  {openAct === d.task_id && (
+                    <ActivityStream acts={acts} />
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="px-3 py-4 text-xs text-zinc-500 dark:text-zinc-400">
+              当前无 AI 进程——卡面 <span className="text-blue-600 dark:text-blue-400">⚡派发</span> 执行 /{" "}
+              <span className="text-emerald-600 dark:text-emerald-400">✔验收</span> 核验，过程流在此实时可看
+            </div>
+          )}
+        </div>
+
+        <div className={CARD}>
+          <div className={H2}>执行者负载</div>
+          <ul className="p-3 space-y-2.5">
+            {ins?.load.map(d => {
+              const total = d.active + d.review
+              const pct = total ? (d.active / total) * 100 : 0
+              return (
+                <li key={d.owner}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="font-medium">{d.owner}</span>
+                    <span className="text-zinc-500 dark:text-zinc-400">
+                      在手 {d.active} · 待验收 {d.review}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex">
+                    <div className="bg-blue-500" style={{ width: `${pct}%` }} />
+                    <div className="bg-amber-500" style={{ width: `${100 - pct}%` }} />
+                  </div>
+                </li>
+              )
+            })}
+            {ins && !ins.load.length && <li className="text-xs text-zinc-500 py-4 text-center">暂无在办</li>}
           </ul>
-        )}
-        <ul className="p-3 space-y-2.5">
-          {ins?.load.map(d => {
-            const total = d.active + d.review
-            const pct = total ? (d.active / total) * 100 : 0
-            return (
-              <li key={d.owner}>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="font-medium">{d.owner}</span>
-                  <span className="text-zinc-500 dark:text-zinc-400">
-                    在手 {d.active} · 待验收 {d.review}
-                  </span>
-                </div>
-                <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex">
-                  <div className="bg-blue-500" style={{ width: `${pct}%` }} />
-                  <div className="bg-amber-500" style={{ width: `${100 - pct}%` }} />
-                </div>
-              </li>
-            )
-          })}
-          {ins && !ins.load.length && <li className="text-xs text-zinc-500 py-4 text-center">暂无在办</li>}
-        </ul>
+        </div>
       </div>
     </div>
   )

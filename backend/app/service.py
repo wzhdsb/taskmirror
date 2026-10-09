@@ -712,8 +712,15 @@ def stop_dispatch(cid: str, actor: str = "webui") -> dict:
 
 def running() -> list[dict]:
     _reap()
-    return [{"task_id": k, "pid": v["pid"], "started": v["started"]}
-            for k, v in DISPATCHES.items()]
+    out = []
+    for k, v in DISPATCHES.items():
+        # agent 类型从最近 dispatched/review 事件派生(不加表列, 重启收养后同样成立); 并发≤4 小查询
+        ev = db.conn().execute(
+            "SELECT event FROM task_events WHERE task_id=? AND event IN('dispatched','review') "
+            "ORDER BY id DESC LIMIT 1", (k,)).fetchone()
+        out.append({"task_id": k, "pid": v["pid"], "started": v["started"],
+                    "agent": "acceptor" if ev and ev["event"] == "review" else "executor"})
+    return out
 
 
 def _parse_activity(lines: list[str]) -> list[dict]:

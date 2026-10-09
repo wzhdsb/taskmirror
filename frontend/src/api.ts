@@ -27,7 +27,7 @@ export const api = {
   recent: (limit = 100) => req<{ events: RecentEvent[] }>("GET", `/api/events/recent?limit=${limit}`),
   dispatch: (id: string) => req<{ ok: boolean; pid: number }>("POST", `/api/tasks/${encodeURIComponent(id)}/dispatch`),
   review: (id: string) => req<{ ok: boolean; pid: number }>("POST", `/api/tasks/${encodeURIComponent(id)}/review`),
-  dispatches: () => req<{ running: { task_id: string; pid: number; started: string }[] }>("GET", "/api/dispatches"),
+  dispatches: () => req<{ running: { task_id: string; pid: number; started: string; agent: string }[] }>("GET", "/api/dispatches"),
   stopDispatch: (id: string) => req<{ ok: boolean }>("POST", `/api/dispatches/${encodeURIComponent(id)}/stop`),
   activity: (id: string) =>
     req<{ activities: { kind: string; text: string; ts: string }[]; running: boolean }>(
