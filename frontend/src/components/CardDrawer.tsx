@@ -129,7 +129,7 @@ export default function CardDrawer({
             </h2>
           )}
           <div className="mt-1 text-[11px] text-zinc-400 truncate">
-            {t.id} · 建 {t.created.slice(5, 16)} · 更 {t.updated.slice(5, 16)}
+            {t.id}{t.code ? ` · 代号 ${t.code}` : ""} · 建 {t.created.slice(5, 16)} · 更 {t.updated.slice(5, 16)}
           </div>
         </div>
 

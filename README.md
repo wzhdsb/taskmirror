@@ -22,7 +22,9 @@ Two independent processes share the same DB. **If the web server dies, agents ke
 - **Kanban web UI** — dark/light, drag & drop (dnd-kit), right drawer with markdown body editing, labels/priority/due/color, live updates over SSE
 - **Monitor tab** — per-owner load, stalled cards, stage-duration averages, live event stream, rule-based advisor suggestions (`GET /api/insights`)
 - **Relate & depend** — `related` (sibling work) / `depends` (my prerequisite) edges, one-way declared with reverse lookup computed on read; ⧉/⏳ card badges (⏳ jumps to the prerequisite), blocked cards sink in the pending column, blocked-list surfaced in insights, dependency cycles rejected at write time
+- **Step progress & short codes** — checklist items in the card body (`- [ ]`) become task nodes: cards show a segmented progress bar with a done/total count, body stays the single source of truth; every card gets a short code `MMDD-N` for verbal/session references — `take_task` accepts it in place of the full id
 - **Task-tree column** — a fifth column past Done: cards with edges aggregate into tree cards (connected components); click to open a drawer with the depends hierarchy (prerequisites on top, successors indented)
+- **AI acceptance** — cards landing in the review column auto-spawn an acceptor agent (true async: the always-on service triggers it, no session needed); it re-runs the card's verification commands instead of trusting the executor's claims, then passes (archives with a review report), bounces (back to pending with concrete gaps), or defers to a human (发版/visual/business calls get the `人工验收` label); per-card auto-review cap prevents ping-pong
 - **Autonomy-safe** — card claiming auto-skips cards blocked on unfinished prerequisites (never stops to ask); archived cards are reopen-only (status pill / drag back), body/owner/relate edits rejected; empty body on create = quick `## 需求` card for agents to flesh out
 - **9 MCP tools** — `list_tasks` `get_task` `create_task` `take_task` (atomic claim + prerequisite check) `update_task` `set_status` `add_log` `relate_task` `get_insights`
 - **Durable by construction** — WAL mode + `busy_timeout`, append-only event log (the single source of progress history), auto backups (every 50 writes, keep 20), atomic mirror writes, JSON access logs
@@ -60,6 +62,8 @@ Markdown body with four sections agents understand:
 Status flow: 待执行 → 执行中 (claim) → 待验收 (deliver) → 完成 (accept). Executors stop at 待验收; only the acceptor archives.
 
 ## Development
+
+Branches: work on `dev`; at each release, `merge dev` into `release` (the default branch) and tag there.
 
 ```bash
 python dev.py test           # backend pytest + frontend type-check/build

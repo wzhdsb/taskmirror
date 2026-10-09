@@ -18,6 +18,9 @@ body {
 .md ul { @apply list-disc pl-5 my-1.5; }
 .md ol { @apply list-decimal pl-5 my-1.5; }
 .md li { @apply my-0.5; }
+/* 任务节点 checkbox(GFM task list): 不显示圆点, 勾选态绿色 */
+.md li.task-list-item { @apply list-none -ml-5; }
+.md input[type="checkbox"] { @apply accent-emerald-500 mr-1.5; }
 .md code { @apply bg-zinc-200/70 dark:bg-zinc-800 rounded px-1 py-0.5 text-[12px]; }
 .md pre { @apply bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md p-2.5 my-2 overflow-x-auto; }
 .md pre code { @apply bg-transparent p-0; }

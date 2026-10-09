@@ -3,7 +3,9 @@ import asyncio
 import json
 import logging
 import time
+from pathlib import Path
 
+import tomllib
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +13,9 @@ from fastapi.staticfiles import StaticFiles
 from . import config, db, mirror, service
 from .models import LogReq, MoveReq, RelateReq, TaskCreate, TaskPatch
 from .service import ApiError
+
+# 版本号唯一真源 = backend/pyproject.toml(editable 安装的元数据会过期, 不读它)
+_VERSION = tomllib.loads(Path(__file__).resolve().parent.parent.joinpath("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 
 SSE_POLL = 1.0
 
@@ -124,6 +129,10 @@ def create_app() -> FastAPI:
     def dispatch_task(cid: str):
         return service.dispatch(cid)
 
+    @app.post("/api/tasks/{cid}/review")
+    def review_task(cid: str):
+        return service.review(cid)
+
     @app.get("/api/dispatches")
     async def list_dispatches():
         return {"running": service.running()}
@@ -146,7 +155,7 @@ def create_app() -> FastAPI:
     @app.get("/api/meta")
     async def meta():
         return {"rev": db.get_rev(), "home": str(config.home()), "auth": bool(config.TOKEN),
-                "version": "0.1.0"}
+                "version": _VERSION}
 
     # ---------- 静态前端与兼容路由 ----------
 

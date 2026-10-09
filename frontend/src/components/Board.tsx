@@ -23,6 +23,7 @@ export default function Board({
   onNew,
   flash,
   onDispatch,
+  onReview,
 }: {
   tasks: Task[]
   done: Task[]
@@ -31,6 +32,7 @@ export default function Board({
   onNew: () => void
   flash: Record<string, "new" | "upd">
   onDispatch: (id: string) => void
+  onReview: (id: string) => void
 }) {
   const [activeId, setActiveId] = useState<string | null>(null)
   // 碰撞候选排除被拖卡自身, 否则空列时它离指针"最近"导致拖不动
@@ -74,6 +76,7 @@ export default function Board({
             onNew={s === "待执行" ? onNew : undefined}
             flash={flash}
             onDispatch={onDispatch}
+            onReview={onReview}
           />
         ))}
         <TreeColumn all={all} onOpen={onOpen} />
@@ -102,7 +105,10 @@ function TreeColumn({ all, onOpen }: { all: Task[]; onOpen: (id: string) => void
               onClick={() => setOpen(g)}
               className="rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-2 text-left hover:shadow-md transition-shadow"
             >
-              <p className="text-xs font-medium line-clamp-1">{g[0].title}</p>
+              <p className="text-xs font-medium line-clamp-1">
+                {g[0].code && <span className="mr-1 px-1 rounded bg-zinc-100 dark:bg-zinc-700/70 text-zinc-400 text-[10px] font-mono">{g[0].code}</span>}
+                {g[0].title}
+              </p>
               <div className="mt-1.5 flex flex-wrap gap-1 items-center text-[11px]">
                 {g.map(m => (
                   <span key={m.id} className={`size-1.5 rounded-full ${STATUS_DOT[m.status]}`} title={`${m.title} (${m.status})`} />
@@ -190,6 +196,7 @@ function TreeDrawer({ group, onClose, onOpen }: {
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-left"
               >
                 <span className={`size-2 rounded-full shrink-0 ${STATUS_DOT[t.status]}`} />
+                {t.code && <span className="px-1 rounded bg-zinc-100 dark:bg-zinc-700/70 text-zinc-400 text-[10px] font-mono shrink-0">{t.code}</span>}
                 <span className="flex-1 truncate text-sm">{t.title}</span>
                 {t.owner && <span className="text-[11px] text-blue-600 dark:text-blue-400 shrink-0">{t.owner}</span>}
                 <span className="text-[11px] text-zinc-400 shrink-0">{t.status}</span>
@@ -209,6 +216,7 @@ function Column({
   onNew,
   flash,
   onDispatch,
+  onReview,
 }: {
   status: Status
   tasks: Task[]
@@ -216,6 +224,7 @@ function Column({
   onNew?: () => void
   flash: Record<string, "new" | "upd">
   onDispatch: (id: string) => void
+  onReview: (id: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status })
   return (
@@ -235,7 +244,7 @@ function Column({
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2 min-h-24">
         <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map(t => (
-            <Card key={t.id} task={t} onOpen={onOpen} flash={flash[t.id]} onDispatch={onDispatch} />
+            <Card key={t.id} task={t} onOpen={onOpen} flash={flash[t.id]} onDispatch={onDispatch} onReview={onReview} />
           ))}
         </SortableContext>
         {!tasks.length && onNew ? (

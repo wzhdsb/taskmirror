@@ -19,6 +19,7 @@ STATUSES = ("待执行", "执行中", "待验收", "完成")
 PRIORITIES = ("low", "normal", "high", "urgent")
 STATUS_ORD = {s: i for i, s in enumerate(STATUSES)}
 LOG_LINE_RE = re.compile(r"^- (\d{2}-\d{2} \d{2}:\d{2}) \[(.+?)\] (.*)$")
+CHECKBOX_RE = re.compile(r"^\s*[-*]\s+\[( |x|X)\] ", re.MULTILINE)  # 任务节点: 正文 checkbox 行(行内[x]与普通列表不算)
 _lock = threading.Lock()
 
 
@@ -57,6 +58,8 @@ def _serialize(row: sqlite3.Row) -> dict:
             d[k] = json.loads(d.get(k) or "[]")
         except ValueError:
             d[k] = []
+    boxes = CHECKBOX_RE.findall(d.get("body") or "")
+    d["stepsDone"], d["stepsTotal"] = sum(b != " " for b in boxes), len(boxes)
     return d
 
 
@@ -257,12 +260,17 @@ def create(title, body="", labels=None, priority="normal", due=None, color=None,
             cid, n = stem, 2
             while c.execute("SELECT 1 FROM tasks WHERE id=?", (cid,)).fetchone():
                 cid, n = f"{stem}-{n}", n + 1
+            # 短代号 MMDD-N: 当日(含归档)全局最大序号+1, 持锁分配不并发撞号
+            mmdd = time.strftime("%m%d")
+            nseq = 1 + max((int(r[0].rsplit("-", 1)[-1]) for r in c.execute(
+                "SELECT code FROM tasks WHERE code LIKE ?", (mmdd + "-%",))
+                if r[0].rsplit("-", 1)[-1].isdigit()), default=0)
             pos = c.execute("SELECT COALESCE(MAX(position),-1)+1 FROM tasks "
                             "WHERE board_id=1 AND status='待执行'").fetchone()[0]
             c.execute("INSERT INTO tasks(id, board_id, title, status, owner, priority, labels, color, "
-                      "due, body, position, created, updated) VALUES(?,1,?,'待执行','',?,?,?,?,?,?,?,?)",
+                      "due, body, position, created, updated, code) VALUES(?,1,?,'待执行','',?,?,?,?,?,?,?,?,?)",
                       (cid, title, priority, json.dumps(labels, ensure_ascii=False), color, due,
-                       (body or "").strip() or "## 需求", pos, ts, ts))
+                       (body or "").strip() or "## 需求", pos, ts, ts, f"{mmdd}-{nseq}"))
             _ev(c, cid, "created", {"title": title}, actor)
             db.bump_rev(c)
         loaded = _load_for_mirror(c, cid)
@@ -344,6 +352,8 @@ def move(cid, status, before_id=None, actor=None) -> dict:
             db.bump_rev(c)  # 纯重排也要刷新页面
         loaded = _load_for_mirror(c, cid)
     _after_write(cid, loaded)
+    if status == "待验收" and old != status:
+        _auto_review(cid)  # 自动验收钩子: REST/MCP/拖卡都汇到 move(), 一处全覆盖
     return detail(cid)
 
 
@@ -363,6 +373,11 @@ def take(owner, cid=None, actor=None) -> dict:
         c = db.conn()
         with c:
             if cid:
+                # 短代号定位: 口头/会话引用 MMDD-N, 无歧义时解析到真 id
+                if not c.execute("SELECT 1 FROM tasks WHERE id=?", (cid,)).fetchone():
+                    hit = c.execute("SELECT id FROM tasks WHERE code=?", (cid,)).fetchall()
+                    if len(hit) == 1:
+                        cid = hit[0]["id"]
                 row = _get(c, cid)
                 blocked = _blocked(c, row)
                 if blocked:
@@ -598,15 +613,12 @@ def resume_dispatches() -> None:
             system_event(cid, "dispatch_lost", {"pid": pid})
 
 
-def dispatch(cid: str, actor: str = "webui") -> dict:
-    _reap()
-    t = _get(db.conn(), cid)
-    if t["status"] != "待执行":
-        raise ApiError(400, "仅待执行卡可派发")
+def _launch(cid: str, agent: str, prompt: str, ev: str, actor: str) -> dict:
+    """spawn claude -p 子代理, dispatch(执行)/review(验收) 共用进程管理与并发预算。"""
     if cid in DISPATCHES:
-        raise ApiError(409, "该卡已有 AI 在执行")
+        raise ApiError(409, "该卡已有 AI 进程")
     if len(DISPATCHES) >= MAX_DISPATCH:
-        raise ApiError(429, f"AI 并发已满({MAX_DISPATCH})，稍后再派")
+        raise ApiError(429, f"AI 并发已满({MAX_DISPATCH})，稍后再试")
     claude = shutil.which("claude")
     if not claude:
         raise ApiError(500, "PATH 里未找到 claude 命令")
@@ -615,10 +627,8 @@ def dispatch(cid: str, actor: str = "webui") -> dict:
     log = str(logs / f"dispatch-{cid}-{int(time.time())}.jsonl")
     # stream-json: 每行一个事件(assistant/tool_use/result), activity() 解析成网页过程流
     lf = open(log, "w", encoding="utf-8")  # noqa: SIM115 随进程存续, reaped/stop 时关闭
-    prompt = (f"从 TaskMirror 用 take_task 认领任务卡 {cid}，按卡内四段式(①任务②已知事实③交付物④注意)"
-              f"执行到待验收，进展用 add_log 追加。")
     proc = subprocess.Popen(
-        [claude, "-p", "--agent", "task-executor", "--dangerously-skip-permissions",
+        [claude, "-p", "--agent", agent, "--dangerously-skip-permissions",
          "--output-format", "stream-json", "--verbose", prompt],
         stdout=lf, stderr=subprocess.STDOUT, cwd=str(config.repo_root()),
         env={**os.environ, "PYTHONUTF8": "1"},
@@ -630,8 +640,53 @@ def dispatch(cid: str, actor: str = "webui") -> dict:
         c.execute("INSERT OR REPLACE INTO dispatches(task_id, pid, log, started) VALUES(?,?,?,?)",
                   (cid, proc.pid, log, started))
         db.bump_rev(c)
-    system_event(cid, "dispatched", {"pid": proc.pid, "log": Path(log).name}, actor)
+    system_event(cid, ev, {"pid": proc.pid, "log": Path(log).name}, actor)
     return {"ok": True, "pid": proc.pid}
+
+
+def dispatch(cid: str, actor: str = "webui") -> dict:
+    _reap()
+    t = _get(db.conn(), cid)
+    if t["status"] != "待执行":
+        raise ApiError(400, "仅待执行卡可派发")
+    prompt = (f"从 TaskMirror 用 take_task 认领任务卡 {cid}，按卡内四段式(①任务②已知事实③交付物④注意)"
+              f"执行到待验收，进展用 add_log 追加。")
+    return _launch(cid, "task-executor", prompt, "dispatched", actor)
+
+
+REVIEW_MAX = 2  # 每卡自动验收次数上限: 打回→重做→再验 之后转人工, 防拉锯
+
+
+def review(cid: str, actor: str = "webui") -> dict:
+    """派验收 agent 异步核验待验收卡(复用 dispatch 进程管理/活动流/停止按钮)。"""
+    _reap()
+    if _get(db.conn(), cid)["status"] != "待验收":
+        raise ApiError(400, "仅待验收卡可验收")
+    prompt = (f"验收 TaskMirror 任务卡 {cid}: get_task 读卡, 对③交付物逐项实证核验(重跑卡内验收命令/"
+              f"查文件/跑测试, 不信执行者日志自述)。三判一: ①通过=add_log 写验收报告后 set_status 完成;"
+              f" ②打回=set_status 待执行+add_log 具体缺口; ③需人工(发版/对外/视觉观感/业务取舍/新量化数字)"
+              f"=update_task 加标签「人工验收」+add_log 说明。不改任何代码, 不补交付物。")
+    return _launch(cid, "task-acceptor", prompt, "review", actor)
+
+
+def _auto_review(cid: str) -> None:
+    """卡到待验收即自动派验收 agent(真异步: 服务常驻, 主会话不在也跑)。
+    TASKBOARD_REVIEWER 开关(默认关, 测试/本地免惊扰); 「人工验收」label 与每卡次数上限拦住。"""
+    if os.environ.get("TASKBOARD_REVIEWER") != "1":
+        return
+    c = db.conn()
+    row = _get(c, cid)
+    if "人工验收" in json.loads(row["labels"] or "[]"):
+        return
+    n = c.execute("SELECT COUNT(*) FROM task_events WHERE task_id=? AND event='review'",
+                  (cid,)).fetchone()[0]
+    if n >= REVIEW_MAX:
+        system_event(cid, "review_skip", {"reason": f"自动验收已达 {REVIEW_MAX} 次上限, 转人工"})
+        return
+    try:
+        review(cid, actor="auto-reviewer")
+    except ApiError as e:
+        system_event(cid, "review_skip", {"reason": e.msg})
 
 
 def stop_dispatch(cid: str, actor: str = "webui") -> dict:
@@ -647,6 +702,8 @@ def stop_dispatch(cid: str, actor: str = "webui") -> dict:
         c.execute("DELETE FROM dispatches WHERE task_id=?", (cid,))
         db.bump_rev(c)
     system_event(cid, "dispatch_stopped", {"pid": d["pid"]}, actor)
+    if _get(db.conn(), cid)["status"] == "待验收":
+        return {"ok": True}  # 验收进程或已交付的执行进程: 只杀不打回, 交付不毁
     # 进程已死, 卡不可能再推进: 打回待执行清 owner, 供重新派发/人工接手
     patch(cid, owner="", actor="system")
     move(cid, "待执行", None, actor="system")

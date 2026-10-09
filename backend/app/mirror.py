@@ -75,6 +75,7 @@ def render(task: dict, events: list[dict], tail: str = "") -> str:
     fm = [
         "---",
         f"id: {task['id']}",
+        f"code: {task.get('code') or ''}",
         f"title: {task['title']}",
         f"status: {task['status']}",
         f"owner: {_fm_val(task.get('owner') or '')}",

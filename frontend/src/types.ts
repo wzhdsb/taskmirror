@@ -16,6 +16,11 @@ export interface Task {
   position: number
   created: string
   updated: string
+  /** 短代号 MMDD-N(口头/会话引用用) */
+  code: string
+  /** 正文 checkbox 任务节点现算(无节点为 0, 前端不渲染) */
+  stepsDone: number
+  stepsTotal: number
   /** 关联依赖(单向声明), 后五个字段由服务端反查现算 */
   related: string[]
   depends: string[]

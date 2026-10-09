@@ -49,6 +49,15 @@ MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE tasks ADD COLUMN related TEXT NOT NULL DEFAULT '[]'",
         "ALTER TABLE tasks ADD COLUMN depends TEXT NOT NULL DEFAULT '[]'",
     ],
+    4: [
+        # 短代号 MMDD-N(建卡日+当天序号, 口头/会话引用用); 存量按 created 日 ROW_NUMBER 回填
+        "ALTER TABLE tasks ADD COLUMN code TEXT NOT NULL DEFAULT ''",
+        """WITH d AS (SELECT id, strftime('%m%d', created) mm,
+                       ROW_NUMBER() OVER (PARTITION BY strftime('%m%d', created) ORDER BY created, id) n
+                   FROM tasks)
+           UPDATE tasks SET code = (SELECT mm || '-' || n FROM d WHERE d.id = tasks.id)
+           WHERE code = ''""",
+    ],
 }
 
 _backup_lock = threading.Lock()

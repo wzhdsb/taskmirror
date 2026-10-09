@@ -125,7 +125,9 @@ def test_activity_parse(home):
         json.dumps({"type": "result", "result": "任务完成, 已置待验收"}),
     ]
     acts = service._parse_activity(lines)
-    assert acts[0] == {"kind": "tool", "text": "take_task(20261009-x)", "ts": "04:31:58"}
+    from datetime import datetime
+    want_ts = datetime.fromisoformat("2026-10-08T20:31:58.899+00:00").astimezone().strftime("%H:%M:%S")
+    assert acts[0] == {"kind": "tool", "text": "take_task(20261009-x)", "ts": want_ts}  # UTC→本机时区, 不硬编码时区
     assert acts[1]["kind"] == "text" and len(acts[1]["text"]) == 110
     assert acts[-1]["kind"] == "done" and "待验收" in acts[-1]["text"]
     # system/hook 行被过滤

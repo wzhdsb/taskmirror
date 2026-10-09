@@ -148,6 +148,12 @@ export default function App() {
       .catch(e => toast(e.message))
   }, [toast])
 
+  const onReview = useCallback((id: string) => {
+    api.review(id)
+      .then(r => toast(`已派验收 AI（进程 ${r.pid}），结论会写入卡片日志`))
+      .catch(e => toast(e.message))
+  }, [toast])
+
   const sel = "h-7 px-2 rounded-md bg-zinc-100 dark:bg-zinc-800 border border-transparent focus:border-blue-500 outline-none text-xs max-w-28"
 
   return (
@@ -207,7 +213,7 @@ export default function App() {
 
       {tab === "board" ? (
         <Board tasks={tasks} done={done} onOpen={setOpenId} onMove={onMove} onNew={() => setShowNew(true)}
-          flash={flash} onDispatch={onDispatch} />
+          flash={flash} onDispatch={onDispatch} onReview={onReview} />
       ) : (
         <Monitor rev={rev} onOpen={setOpenId} />
       )}
