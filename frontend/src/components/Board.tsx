@@ -129,7 +129,7 @@ export default function Board({
       onDragCancel={() => setActiveId(null)}
     >
       <div className="flex-1 flex gap-4 overflow-hidden">
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto px-4 pb-4">{/* 顶部零内衬: sticky 表头吸附点=容器顶, 不留透缝 */}
           <div className="min-w-[60rem] flex flex-col gap-2.5">
             {/* 状态列表头: 与泳道同网格模板(无边框无内衬) → 列必对齐; 吸顶时整条实底盖住滚动内容 */}
             <div className="sticky top-0 z-10 -mx-4 px-4 pt-1 pb-1.5 bg-zinc-50 dark:bg-zinc-950">
