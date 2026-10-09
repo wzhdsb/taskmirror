@@ -16,6 +16,7 @@ import { STATUSES, STATUS_DOT, type Status, type Task } from "../types"
 import Card from "./Card"
 
 const GRID = "grid grid-cols-4 gap-3"
+const DONE_CAP = 5 // 完成列每道默认只显 5 张, 防归档卡把泳道撑出大片留白; 点「还有 N 张」展开
 
 export default function Board({
   tasks,
@@ -130,16 +131,18 @@ export default function Board({
     >
       <div className="flex-1 flex gap-4 overflow-hidden">
         <div className="flex-1 overflow-auto p-4">
-          <div className="min-w-[60rem] flex flex-col gap-3">
-            {/* 状态列表头: 泳道滚动时吸顶 */}
-            <div className={`${GRID} sticky top-0 z-10 py-1 bg-white/90 dark:bg-zinc-950/90 backdrop-blur`}>
-              {STATUSES.map(s => (
-                <div key={s} className="flex items-center gap-2 px-1 h-7">
-                  <span className={`size-2 rounded-full ${STATUS_DOT[s]}`} />
-                  <span className="font-medium text-sm">{s}</span>
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400">{all.filter(t => t.status === s).length}</span>
-                </div>
-              ))}
+          <div className="min-w-[60rem] flex flex-col gap-2.5">
+            {/* 状态列表头: 与泳道同网格模板(无边框无内衬) → 列必对齐; 吸顶时整条实底盖住滚动内容 */}
+            <div className="sticky top-0 z-10 -mx-4 px-4 pt-1 pb-1.5 bg-zinc-50 dark:bg-zinc-950">
+              <div className={GRID}>
+                {STATUSES.map(s => (
+                  <div key={s} className="flex items-center gap-2 px-1.5 h-7">
+                    <span className={`size-2 rounded-full ${STATUS_DOT[s]}`} />
+                    <span className="font-medium text-sm">{s}</span>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">{all.filter(t => t.status === s).length}</span>
+                  </div>
+                ))}
+              </div>
             </div>
             {lanes.map(p => {
               const cells = STATUSES.map(s => cell(p, s))
@@ -147,11 +150,12 @@ export default function Board({
               const stars = cells.reduce((n, c) => n + c.filter(t => t.starred).length, 0)
               const fold = collapsed.includes(p)
               return (
-                <section key={p || "__none"} className="rounded-lg border border-zinc-200 dark:border-zinc-700/60 bg-zinc-50 dark:bg-zinc-900/60">
-                  <header className="flex items-center gap-2 px-3 h-9">
+                <section key={p || "__none"}>
+                  {/* 泳道头: 通栏色条区分项目, 网格不带盒子 → 与表头同宽对齐 */}
+                  <header className="flex items-center gap-2 h-8 px-2.5 rounded-md bg-zinc-200/50 dark:bg-zinc-800/50">
                     <button
                       onClick={() => toggleLane(p)}
-                      className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs w-4"
+                      className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs w-4 shrink-0"
                       title={fold ? "展开泳道" : "折叠泳道"}
                     >
                       {fold ? "▶" : "▼"}
@@ -167,7 +171,7 @@ export default function Board({
                     ) : (
                       <span className="font-medium text-sm text-zinc-500 dark:text-zinc-400">未分组</span>
                     )}
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">{total}</span>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums">{total}</span>
                     {stars > 0 && <span className="text-xs text-amber-500">★{stars}</span>}
                     {fold && (
                       <span className="text-[11px] text-zinc-400 truncate">
@@ -176,12 +180,13 @@ export default function Board({
                     )}
                   </header>
                   {!fold && (
-                    <div className={`${GRID} px-2 pb-2`}>
+                    <div className={`${GRID} mt-1.5`}>
                       {cells.map((list, i) => (
                         <Cell
                           key={STATUSES[i]}
                           droppableId={`${p}|${STATUSES[i]}`}
                           tasks={list}
+                          cap={STATUSES[i] === "完成" ? DONE_CAP : 0}
                           onOpen={onOpen}
                           flash={flash}
                           onDispatch={onDispatch}
@@ -202,10 +207,11 @@ export default function Board({
   )
 }
 
-/** 泳道格: 独立 droppable(id=project|status) + 星标置顶的排序列表 */
+/** 泳道格: 淡色块当列底(空格不再放占位文字), 独立 droppable(id=project|status), 星标置顶; cap>0 时截断显示 */
 function Cell({
   droppableId,
   tasks,
+  cap,
   onOpen,
   flash,
   onDispatch,
@@ -213,27 +219,44 @@ function Cell({
 }: {
   droppableId: string
   tasks: Task[]
+  cap: number
   onOpen: (id: string) => void
   flash: Record<string, "new" | "upd">
   onDispatch: (id: string) => void
   onReview: (id: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: droppableId })
+  const [open, setOpen] = useState(false)
   const sorted = [...tasks].sort((a, b) => (b.starred || 0) - (a.starred || 0))
+  const shown = cap && !open ? sorted.slice(0, cap) : sorted
+  const hidden = sorted.length - shown.length
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col gap-2 min-h-24 p-1.5 rounded-md transition-colors ${
-        isOver ? "bg-blue-500/10 ring-1 ring-blue-500/50" : ""
+      className={`flex flex-col gap-1.5 min-h-20 p-1.5 rounded-md transition-colors ${
+        isOver ? "bg-blue-500/10 ring-1 ring-blue-500/50" : "bg-zinc-100/70 dark:bg-zinc-900/40"
       }`}
     >
-      <SortableContext items={sorted.map(t => t.id)} strategy={verticalListSortingStrategy}>
-        {sorted.map(t => (
+      <SortableContext items={shown.map(t => t.id)} strategy={verticalListSortingStrategy}>
+        {shown.map(t => (
           <Card key={t.id} task={t} onOpen={onOpen} flash={flash[t.id]} onDispatch={onDispatch} onReview={onReview} />
         ))}
       </SortableContext>
-      {!sorted.length && (
-        <div className="flex-1 grid place-items-center text-xs text-zinc-400 dark:text-zinc-500 select-none">拖卡到这里</div>
+      {hidden > 0 && (
+        <button
+          onClick={() => setOpen(true)}
+          className="h-6 shrink-0 rounded text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200/70 dark:hover:bg-zinc-800/70 select-none"
+        >
+          ▾ 还有 {hidden} 张
+        </button>
+      )}
+      {hidden === 0 && cap > 0 && sorted.length > cap && (
+        <button
+          onClick={() => setOpen(false)}
+          className="h-6 shrink-0 rounded text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 select-none"
+        >
+          ▴ 收起
+        </button>
       )}
     </div>
   )
