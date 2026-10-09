@@ -63,6 +63,8 @@ Status flow: 待执行 → 执行中 (claim) → 待验收 (deliver) → 完成 
 
 ## Development
 
+Branches: work on `dev`; at each release, `merge dev` into `release` (the default branch) and tag there.
+
 ```bash
 python dev.py test           # backend pytest + frontend type-check/build
 python dev.py e2e            # Playwright full-flow smoke (needs `python dev.py build` first)

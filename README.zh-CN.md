@@ -63,6 +63,8 @@ Linux/macOS 去掉 `cmd /c`。之后任意会话里说"用 taskmirror 建卡：�
 
 ## 开发
 
+分支模型：日常开发在 `dev`；每次发版把 `dev` 合入 `release`（默认分支）并在 release 上打 tag。
+
 ```bash
 python dev.py test           # 后端 pytest + 前端类型检查/构建
 python dev.py e2e            # Playwright 全流程冒烟（先 python dev.py build）
