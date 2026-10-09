@@ -137,9 +137,13 @@ def create_app() -> FastAPI:
     async def list_dispatches():
         return {"running": service.running()}
 
+    @app.get("/api/dispatches/recent")
+    async def recent_dispatches():
+        return {"recent": service.recent_dispatches()}
+
     @app.get("/api/dispatches/{cid}/activity")
-    async def dispatch_activity(cid: str):
-        return service.activity(cid)
+    async def dispatch_activity(cid: str, raw: bool = False):
+        return service.activity(cid, raw)
 
     @app.post("/api/dispatches/{cid}/stop")
     def stop_dispatch(cid: str):

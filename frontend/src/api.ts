@@ -28,10 +28,14 @@ export const api = {
   dispatch: (id: string) => req<{ ok: boolean; pid: number }>("POST", `/api/tasks/${encodeURIComponent(id)}/dispatch`),
   review: (id: string) => req<{ ok: boolean; pid: number }>("POST", `/api/tasks/${encodeURIComponent(id)}/review`),
   dispatches: () => req<{ running: { task_id: string; pid: number; started: string; agent: string }[] }>("GET", "/api/dispatches"),
+  recentDispatches: () => req<{ recent: { task_id: string; ended: string }[] }>("GET", "/api/dispatches/recent"),
   stopDispatch: (id: string) => req<{ ok: boolean }>("POST", `/api/dispatches/${encodeURIComponent(id)}/stop`),
   activity: (id: string) =>
     req<{ activities: { kind: string; text: string; ts: string }[]; running: boolean }>(
       "GET", `/api/dispatches/${encodeURIComponent(id)}/activity`),
+  activityRaw: (id: string) =>
+    req<{ raw: string[]; running: boolean }>(
+      "GET", `/api/dispatches/${encodeURIComponent(id)}/activity?raw=1`),
 }
 
 /** SSE rev 广播 → onChange; 返回清理函数。EventSource 自带断线重连。 */
